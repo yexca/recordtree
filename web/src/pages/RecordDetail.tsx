@@ -155,7 +155,7 @@ export default function RecordDetail({
                             <CopyButton value={link.mega_url} timeout={1500}>
                               {({ copied, copy }) => (
                                 <Tooltip label={copied ? 'Copied' : 'Copy URL'}>
-                                  <ActionIcon size="sm" variant="subtle" color={copied ? 'teal' : 'gray'} onClick={copy} aria-label="Copy URL">
+                                  <ActionIcon size="sm" variant="subtle" color={copied ? 'green' : 'gray'} onClick={copy} aria-label="Copy URL">
                                     {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
                                   </ActionIcon>
                                 </Tooltip>

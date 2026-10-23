@@ -230,7 +230,9 @@ function Shell() {
             {menuOpen ? <IconX size={20} /> : <IconMenu2 size={20} />}
           </ActionIcon>
           <Logo size={24} />
-          <strong style={{ fontSize: 15 }}>RecordTree</strong>
+          <strong className="rt-sidebar-brand-name" style={{ fontSize: 17 }}>
+            RecordTree
+          </strong>
         </header>
         <main className="rt-content">
           <PageErrorBoundary resetKey={`${route.name}/${route.recordId ?? ''}`}>

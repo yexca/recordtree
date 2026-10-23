@@ -81,7 +81,8 @@ export function initials(name: string): string {
   return Array.from(trimmed).slice(0, /^[\x00-\x7F]/.test(trimmed) ? 2 : 1).join('').toUpperCase();
 }
 
-const AVATAR_HUES = [340, 320, 296, 272, 12, 28, 352, 250];
+// Muted, earthy hues that sit alongside the terracotta accent.
+const AVATAR_HUES = [15, 30, 42, 95, 150, 190, 215, 262, 320];
 
 /** Stable, name-derived avatar colors that read in both color schemes. */
 export function avatarColors(seed: string | number): { background: string; color: string } {
@@ -92,8 +93,8 @@ export function avatarColors(seed: string | number): { background: string; color
   }
   const hue = AVATAR_HUES[hash % AVATAR_HUES.length];
   return {
-    background: `hsl(${hue} 72% 62% / 0.17)`,
-    color: `hsl(${hue} 50% 52%)`,
+    background: `hsl(${hue} 42% 55% / 0.16)`,
+    color: `hsl(${hue} 40% 48%)`,
   };
 }
 

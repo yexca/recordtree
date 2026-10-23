@@ -6,5 +6,5 @@ export function notifyError(title: string, error: unknown) {
 }
 
 export function notifySuccess(title: string, message?: string) {
-  notifications.show({ color: 'teal', title: message ? title : undefined, message: message ?? title });
+  notifications.show({ color: 'green', title: message ? title : undefined, message: message ?? title });
 }

@@ -10,52 +10,72 @@ import {
   Tabs,
   Tooltip,
   createTheme,
+  type CSSVariablesResolver,
   type MantineColorsTuple,
 } from '@mantine/core';
 
+// Terracotta accent; shade 6 is the light-mode primary and shade 4 the softer dark-mode primary.
 const brand: MantineColorsTuple = [
-  '#fff0f5',
-  '#fcdfe9',
-  '#f6bdd0',
-  '#f09ab7',
-  '#ea7ca1',
-  '#e06690',
-  '#c94f78',
-  '#b1426a',
-  '#96375a',
-  '#7b2c4a',
+  '#fcf4ef',
+  '#f9e6dc',
+  '#f4cdb8',
+  '#f1b597',
+  '#ed9d78',
+  '#cd7050',
+  '#ad4f2f',
+  '#923f24',
+  '#78331d',
+  '#5e2816',
 ];
 
-// Warm, slightly rosy neutrals so default buttons, inputs and dividers match the palette.
+// Warm paper neutrals so default buttons, inputs and dividers match the cream canvas.
 const gray: MantineColorsTuple = [
-  '#fdf8fa',
-  '#f7eff2',
-  '#eee1e7',
-  '#e2d1d9',
-  '#cfbac4',
-  '#a58e9a',
-  '#88727e',
-  '#6c5763',
-  '#51404a',
-  '#3a2d35',
+  '#faf8f4',
+  '#f3eee7',
+  '#ebe4da',
+  '#ddd5cb',
+  '#cdc3b8',
+  '#a59a90',
+  '#776d67',
+  '#5d544f',
+  '#443d39',
+  '#302a26',
 ];
 
-// Plum-tinted dark scale used by Mantine for dark-mode surfaces, inputs and text.
+// Warm charcoal scale used by Mantine for dark-mode surfaces, inputs and text.
 const dark: MantineColorsTuple = [
-  '#f3e5ec',
-  '#d9c3ce',
-  '#b39aa7',
-  '#8a7280',
-  '#4c3643',
-  '#3b2a34',
-  '#2e212a',
-  '#261b22',
-  '#1f161c',
-  '#170f14',
+  '#ebe6df',
+  '#cdc6be',
+  '#a8a29c',
+  '#7d7671',
+  '#4b4541',
+  '#383431',
+  '#2a2623',
+  '#1a1715',
+  '#151210',
+  '#0f0d0c',
 ];
 
 const fontStack =
-  'Inter, "Segoe UI Variable Text", "Segoe UI", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", Meiryo, "Hiragino Sans", "Microsoft YaHei UI", system-ui, -apple-system, sans-serif';
+  '"Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", Meiryo, "Hiragino Sans", "Microsoft YaHei UI", sans-serif';
+
+const serifStack =
+  'ui-serif, Georgia, Cambria, "Times New Roman", "Yu Mincho", "Noto Serif JP", "Noto Serif CJK JP", "Songti SC", serif';
+
+// Popovers, menus and modals sit one step above the canvas on paper-colored surfaces.
+export const cssVariablesResolver: CSSVariablesResolver = () => ({
+  variables: {},
+  light: {
+    '--mantine-color-body': '#fbfaf7',
+    '--mantine-color-default-border': '#ddd5cb',
+  },
+  dark: {
+    '--mantine-color-body': '#221e1c',
+    '--mantine-color-default': '#2a2623',
+    '--mantine-color-default-hover': '#383431',
+    '--mantine-color-default-border': '#4b4541',
+  },
+});
 
 export const theme = createTheme({
   primaryColor: 'brand',
@@ -65,8 +85,8 @@ export const theme = createTheme({
   fontFamily: fontStack,
   fontFamilyMonospace: '"JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Consolas, monospace',
   headings: {
-    fontFamily: fontStack,
-    fontWeight: '650',
+    fontFamily: serifStack,
+    fontWeight: '600',
     sizes: {
       h1: { fontSize: '26px', lineHeight: '1.25' },
       h2: { fontSize: '20px', lineHeight: '1.3' },
@@ -79,14 +99,25 @@ export const theme = createTheme({
     xs: '4px',
     sm: '6px',
     md: '8px',
-    lg: '12px',
-    xl: '16px',
+    lg: '10px',
+    xl: '14px',
   },
   cursorType: 'pointer',
+  focusRing: 'auto',
+  shadows: {
+    xs: '0 1px 2px rgba(54, 40, 31, 0.06)',
+    sm: '0 1px 2px rgba(54, 40, 31, 0.06)',
+    md: '0 5px 14px rgba(54, 40, 31, 0.08)',
+    lg: '0 10px 28px rgba(54, 40, 31, 0.11)',
+    xl: '0 16px 42px rgba(54, 40, 31, 0.14)',
+  },
   components: {
     Button: Button.extend({ defaultProps: { radius: 'md' } }),
     ActionIcon: ActionIcon.extend({ defaultProps: { radius: 'md' } }),
-    Badge: Badge.extend({ defaultProps: { radius: 'sm', variant: 'light' } }),
+    Badge: Badge.extend({
+      defaultProps: { radius: 'sm', variant: 'light' },
+      styles: { root: { textTransform: 'none', fontWeight: 600 } },
+    }),
     Tooltip: Tooltip.extend({ defaultProps: { withArrow: true, openDelay: 250 } }),
     Table: Table.extend({
       defaultProps: { verticalSpacing: 8, horizontalSpacing: 'sm', fz: 'sm', highlightOnHover: true },
@@ -94,7 +125,7 @@ export const theme = createTheme({
     Pagination: Pagination.extend({ defaultProps: { size: 'sm', radius: 'md' } }),
     SegmentedControl: SegmentedControl.extend({ defaultProps: { radius: 'md' } }),
     Tabs: Tabs.extend({ defaultProps: { radius: 'md' } }),
-    Modal: Modal.extend({ defaultProps: { radius: 'lg', centered: true, overlayProps: { blur: 2 } } }),
-    Drawer: Drawer.extend({ defaultProps: { position: 'right', overlayProps: { blur: 2 } } }),
+    Modal: Modal.extend({ defaultProps: { radius: 'lg', centered: true, shadow: 'xl' } }),
+    Drawer: Drawer.extend({ defaultProps: { position: 'right' } }),
   },
 });

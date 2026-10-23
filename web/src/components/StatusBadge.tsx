@@ -5,7 +5,7 @@ import type { CheckStatus, DownloadedStatus } from '../api/types';
 export type Tone = 'good' | 'warn' | 'bad' | 'active' | 'neutral';
 
 const toneColor: Record<Tone, string> = {
-  good: 'teal',
+  good: 'green',
   warn: 'yellow',
   bad: 'red',
   active: 'brand',
