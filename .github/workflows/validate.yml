@@ -1,0 +1,97 @@
+name: Validate
+
+# The job definitions shared by the PR and Full workflows. It has no trigger of
+# its own. Every job runs a Makefile target, so local checks and Actions run the
+# same commands.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  style:
+    name: Style
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+        with:
+          cache: "false"
+      # actionlint is the only Go tool; its module downloads are small enough
+      # to fetch on every run.
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: stable
+          cache: false
+      - name: Run lint, script tests, and workflow lint
+        run: make ci-style
+
+  python:
+    name: Python
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+      - name: Run Python tests
+        run: make ci-python
+
+  web:
+    name: Web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: ./.github/actions/setup-node
+      - name: Type-check and build the WebUI
+        run: make ci-web
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build production image
+        run: make DOCKER_IMAGE=recordtree-downloader-sqlite:ci docker-build
+
+  # The only result a caller or a ruleset needs: it fails unless every job
+  # succeeded.
+  gate:
+    name: Gate
+    if: always()
+    needs: [style, python, web, docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Verify all validation results
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          failed="$(jq -r 'to_entries[] | select(.value.result != "success") | "\(.key)=\(.value.result)"' <<< "$RESULTS")"
+          if [ -n "$failed" ]; then
+            echo "Validation did not pass:" >&2
+            echo "$failed" >&2
+            exit 1
+          fi
+          echo "Every validation job passed."

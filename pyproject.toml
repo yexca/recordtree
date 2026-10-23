@@ -24,6 +24,7 @@ dev = [
     "httpx2",
     "python-multipart",
     "pytest",
+    "ruff",
     "uvicorn[standard]",
 ]
 
@@ -39,3 +40,8 @@ recordtree = ["schema.sql"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+# Errors only: syntax, undefined names, unused imports. Pinning the selection
+# keeps a ruff upgrade from changing what the CI gate rejects.
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

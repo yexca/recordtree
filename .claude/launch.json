@@ -1,0 +1,47 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "demo",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-3.14",
+        "scripts/seed_demo.py",
+        "--serve",
+        "--port",
+        "7648"
+      ],
+      "port": 7648
+    },
+    {
+      "name": "api-dev",
+      "runtimeExecutable": "py",
+      "runtimeArgs": [
+        "-3.14",
+        "-m",
+        "uvicorn",
+        "recordtree.web.api:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "7647"
+      ],
+      "port": 7647
+    },
+    {
+      "name": "web-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "web",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5173",
+        "--strictPort"
+      ],
+      "port": 5173
+    }
+  ]
+}

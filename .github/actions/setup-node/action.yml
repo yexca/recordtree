@@ -1,0 +1,16 @@
+name: Set up Node
+description: Install the Node version pinned in .nvmrc, which matches the Dockerfile build stage.
+inputs:
+  cache:
+    description: Restore the npm download cache keyed by the web lockfile.
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      with:
+        node-version-file: .nvmrc
+        cache: ${{ inputs.cache == 'true' && 'npm' || '' }}
+        cache-dependency-path: web/package-lock.json
+        package-manager-cache: false

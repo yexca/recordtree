@@ -1,15 +1,17 @@
 # Testing Guide
 
+The `Makefile` is the entry point for validation; GitHub Actions runs the same targets. The validation targets and the pre-commit sensitive data check are described in [AGENTS.md](../../AGENTS.md#validation-commands).
+
 Install runtime and test dependencies:
 
 ```bash
-python -m pip install -e ".[dev]"
+make python-install
 ```
 
 Run the full suite:
 
 ```bash
-pytest
+make python-test
 ```
 
 Run one file:

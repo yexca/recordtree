@@ -1,0 +1,493 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import {
+  parseApprovedEndpointAllowlist,
+  scanLine,
+  sensitivePaths,
+} from "./check-sensitive.mjs";
+
+const ownerFile = "recordtree/mega.py";
+
+function endpointFor(host) {
+  const endpoint = new URL("https://example.invalid");
+  endpoint.hostname = host;
+  return endpoint.toString();
+}
+
+function approvedEndpoint() {
+  return endpointFor(["www", "upstream", "net"].join("."));
+}
+
+function allowlistWith(...endpoints) {
+  return parseApprovedEndpointAllowlist(
+    JSON.stringify({
+      version: 1,
+      endpoints: endpoints.map(({ url, files }) => ({
+        url,
+        files,
+        reason: "Test-only approved public endpoint.",
+      })),
+    }),
+  );
+}
+
+function approvedAllowlist() {
+  return allowlistWith({ url: approvedEndpoint(), files: [ownerFile] });
+}
+
+function urlFindings(file, urls, allowlist) {
+  const findings = [];
+  for (const [index, url] of urls.entries()) {
+    scanLine(
+      { file, line: index + 1, text: `const endpoint = "${url}";` },
+      findings,
+      allowlist,
+    );
+  }
+  return findings.map((finding) => `${finding.line}:${finding.kind}`);
+}
+
+const codeHost = ["code", "host", "net"].join(".");
+
+test("matches a ** URL path at any depth only under the declared origin and prefix", () => {
+  const repository = `${endpointFor(codeHost)}owner/project`;
+  const allowlist = allowlistWith({
+    url: `${repository}/**`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [
+        repository,
+        `${repository}/releases`,
+        `${repository}/tags?per_page=100`,
+        `${repository}-fork`,
+        `${endpointFor(codeHost)}owner/other`,
+        `${endpointFor(`api.${codeHost}`)}owner/project`,
+        `${repository.replace("https:", "http:")}/releases`,
+      ],
+      allowlist,
+    ),
+    [
+      "4:non-reserved service URL",
+      "5:non-reserved service URL",
+      "6:non-reserved service URL",
+      "7:non-reserved service URL",
+    ],
+  );
+  assert.deepEqual(
+    urlFindings("README.md", [`${repository}/releases`], allowlist),
+    ["1:non-reserved service URL"],
+  );
+});
+
+test("matches a * URL segment without crossing a path separator", () => {
+  const sponsors = `${endpointFor(codeHost)}sponsors`;
+  const allowlist = allowlistWith({
+    url: `${sponsors}/*`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [`${sponsors}/maintainer`, `${sponsors}/maintainer/extra`, sponsors],
+      allowlist,
+    ),
+    ["2:non-reserved service URL", "3:non-reserved service URL"],
+  );
+});
+
+test("matches owner-file globs by path segment", () => {
+  const registry = endpointFor(["registry", "npmjs", "org"].join("."));
+  const allowlist = allowlistWith(
+    { url: `${registry}**`, files: ["**/package-lock.json"] },
+    { url: approvedEndpoint(), files: ["helper/helper.*.ps1"] },
+  );
+
+  for (const file of ["package-lock.json", "web/package-lock.json"]) {
+    assert.deepEqual(
+      urlFindings(file, [`${registry}pkg/-/pkg-1.0.0.tgz`], allowlist),
+      [],
+    );
+  }
+  assert.deepEqual(
+    urlFindings("web/package.json", [`${registry}pkg`], allowlist),
+    ["1:non-reserved service URL"],
+  );
+  assert.deepEqual(
+    urlFindings("helper/helper.en.ps1", [approvedEndpoint()], allowlist),
+    [],
+  );
+  for (const file of ["helper/nested/helper.en.ps1", "helper/helper.cmd"]) {
+    assert.deepEqual(urlFindings(file, [approvedEndpoint()], allowlist), [
+      "1:non-reserved service URL",
+    ]);
+  }
+});
+
+test("still flags a sensitive query on a wildcard-approved URL", () => {
+  const repository = `${endpointFor(codeHost)}owner/project`;
+  const sensitiveParameter = ["access", "token"].join("_");
+  const allowlist = allowlistWith({
+    url: `${repository}/**`,
+    files: [ownerFile],
+  });
+
+  assert.deepEqual(
+    urlFindings(
+      ownerFile,
+      [`${repository}/tags?${sensitiveParameter}=abcdef123456`],
+      allowlist,
+    ),
+    ["1:URL query contains a sensitive parameter"],
+  );
+});
+
+test("rejects wildcards outside the URL path and malformed globs", () => {
+  const cases = [
+    [
+      { url: `${endpointFor(codeHost).replace("//", "//*.")}owner/**` },
+      /only in the URL path/,
+    ],
+    [
+      { url: `${endpointFor(codeHost).replace(/\/$/u, ":*/")}owner/**` },
+      /invalid URL/,
+    ],
+    [
+      { url: `${endpointFor(codeHost)}owner/**?page=1` },
+      /must not contain a query/,
+    ],
+    [
+      { url: `${endpointFor(codeHost)}owner/a**` },
+      /\*\* only as a whole segment/,
+    ],
+    [
+      { url: approvedEndpoint(), files: ["web/**.ts"] },
+      /\*\* only as a whole segment/,
+    ],
+  ];
+  for (const [entry, expected] of cases) {
+    assert.throws(
+      () => allowlistWith({ files: [ownerFile], ...entry }),
+      expected,
+    );
+  }
+});
+
+test("ends a Markdown link target at its closing parenthesis before CJK text", () => {
+  const endpoint = approvedEndpoint();
+  const allowlist = approvedAllowlist();
+  const findings = [];
+  for (const [line, suffix] of ["를 따릅니다.", "。", " follows."].entries()) {
+    scanLine(
+      { file: ownerFile, line: line + 1, text: `[API](${endpoint})${suffix}` },
+      findings,
+      allowlist,
+    );
+  }
+  assert.deepEqual(findings, []);
+});
+
+test("allows an exact approved endpoint only in its declared file", () => {
+  const endpoint = approvedEndpoint();
+  const allowlist = approvedAllowlist();
+  const findings = [];
+
+  scanLine(
+    { file: ownerFile, line: 1, text: `const endpoint = "${endpoint}";` },
+    findings,
+    allowlist,
+  );
+  assert.deepEqual(findings, []);
+
+  scanLine(
+    {
+      file: "web/src/lib/other-links.ts",
+      line: 1,
+      text: `const endpoint = "${endpoint}";`,
+    },
+    findings,
+    allowlist,
+  );
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "non-reserved service URL");
+});
+
+test("does not honor legacy per-line allow markers", () => {
+  const endpoint = approvedEndpoint();
+  const obsoleteMarker = ["privacy-check:", "allow"].join(" ");
+  const findings = [];
+
+  scanLine(
+    {
+      file: "web/src/lib/other-links.ts",
+      line: 1,
+      text: `const endpoint = "${endpoint}"; // ${obsoleteMarker}`,
+    },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "non-reserved service URL");
+});
+
+test("does not suppress other sensitive content on an approved endpoint line", () => {
+  const endpoint = approvedEndpoint();
+  const sensitiveKey = ["api", "Key"].join("");
+  const findings = [];
+
+  scanLine(
+    {
+      file: ownerFile,
+      line: 1,
+      text: `const endpoint = "${endpoint}"; const ${sensitiveKey} = "value";`,
+    },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "literal value assigned to a sensitive key");
+});
+
+test("treats tokenizer options as configuration, not credentials", () => {
+  const findings = [];
+
+  scanLine(
+    {
+      file: "recordtree/schema.sql",
+      line: 1,
+      text: "  tokenize = 'trigram'",
+    },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.deepEqual(findings, []);
+});
+
+test("distinguishes state references from literals without relaxing configuration files", () => {
+  const findings = [];
+  scanLine(
+    { file: "web/src/example.tsx", line: 1, text: "apiKey: newAPIKey," },
+    findings,
+    approvedAllowlist(),
+  );
+  assert.deepEqual(findings, []);
+  scanLine(
+    { file: "config.yaml", line: 1, text: "apiKey: newAPIKey" },
+    findings,
+    approvedAllowlist(),
+  );
+  assert.equal(findings.length, 1);
+  scanLine(
+    {
+      file: "web/src/example.tsx",
+      line: 2,
+      text: 'apiKey: "ordinaryvalue123",',
+    },
+    findings,
+    approvedAllowlist(),
+  );
+  assert.equal(findings.length, 2);
+});
+
+test("still flags a credential key that follows a tokenizer prefix", () => {
+  const sensitiveKey = ["tokenizer", "Token"].join("");
+  const findings = [];
+
+  scanLine(
+    { file: "config.js", line: 1, text: `const ${sensitiveKey} = "value";` },
+    findings,
+    approvedAllowlist(),
+  );
+
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "literal value assigned to a sensitive key");
+});
+
+test("rejects malformed endpoint allowlist entries", () => {
+  assert.throws(
+    () =>
+      parseApprovedEndpointAllowlist(
+        JSON.stringify({
+          version: 1,
+          endpoints: [{ url: approvedEndpoint(), files: [], reason: "test" }],
+        }),
+      ),
+    /must declare at least one owner file/,
+  );
+});
+
+test("allows the well-known private networks only as exact CIDR blocks", () => {
+  const scan = (text) => {
+    const findings = [];
+    scanLine(
+      { file: "recordtree/example.py", line: 1, text },
+      findings,
+      approvedAllowlist(),
+    );
+    return findings.map((finding) => finding.kind);
+  };
+
+  // Addresses are assembled so this file does not itself hold them.
+  const address = (...octets) => octets.join(".");
+  assert.deepEqual(
+    scan(
+      'defaults := []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"}',
+    ),
+    [],
+  );
+  assert.deepEqual(scan("a network such as 192.168.0.0/16."), []);
+  for (const text of [
+    `host := "${address(192, 168, 1, 20)}"`,
+    `network := "${address(192, 168, 1, 0)}/24"`,
+    `network := "${address(10, 0, 0, 0)}/16"`,
+    `pair := "192.168.0.0/16 ${address(10, 1, 2, 3)}"`,
+    `longer := "${"192.168.0.0/16"}1"`,
+  ]) {
+    assert.deepEqual(scan(text), ["non-loopback IPv4 address"], text);
+  }
+});
+
+function temporaryRepository(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "recordtree-sensitive-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const init = spawnSync("git", ["init", "--quiet"], { cwd: root });
+  assert.equal(init.status, 0, String(init.stderr));
+  return root;
+}
+
+test("reports changed files that the repository's ignore rules match", (t) => {
+  const root = temporaryRepository(t);
+  fs.writeFileSync(
+    path.join(root, ".gitignore"),
+    "runtime/*\n!runtime/.gitkeep\n*.pem\n",
+  );
+  fs.mkdirSync(path.join(root, "nested"));
+  fs.writeFileSync(path.join(root, "nested", ".gitignore"), "local.txt\n");
+
+  assert.deepEqual(
+    sensitivePaths(
+      [
+        "runtime/library.db",
+        "runtime/.gitkeep",
+        "nested/local.txt",
+        "nested/shared.txt",
+        "certs/server.pem",
+        "data/notes.txt",
+        "src/main.js",
+      ],
+      root,
+    ),
+    ["runtime/library.db", "nested/local.txt", "certs/server.pem"],
+  );
+});
+
+test("falls back to the built-in path rules without a root .gitignore", (t) => {
+  const root = temporaryRepository(t);
+
+  assert.deepEqual(
+    sensitivePaths(
+      [
+        "config/recordtree.sqlite3",
+        "downloads/actor/file.bin",
+        "exports/records.xlsx",
+        "backup/recordtree.sqlite3-wal",
+        ".env",
+        ".env.example",
+        "certs/server.pem",
+        "recordtree/app.py",
+      ],
+      root,
+    ),
+    [
+      "config/recordtree.sqlite3",
+      "downloads/actor/file.bin",
+      "exports/records.xlsx",
+      "backup/recordtree.sqlite3-wal",
+      ".env",
+      "certs/server.pem",
+    ],
+  );
+});
+
+// MEGA links are assembled so this file does not itself hold one.
+const megaHost = ["mega", "nz"].join(".");
+const megaOrigin = ["https:", "", megaHost].join("/");
+const legacyMegaOrigin = ["https:", "", ["mega", "co", "nz"].join(".")].join("/");
+const megaNode = ["Ab3dE", "fGh"].join("");
+const megaKey = ["k1Lm", "N0pQ", "rStU", "v2Wx"].join("");
+
+function megaFindings(lines) {
+  const findings = [];
+  for (const [index, text] of lines.entries()) {
+    scanLine(
+      { file: "docs/user-guide/cli.md", line: index + 1, text },
+      findings,
+      approvedAllowlist(),
+    );
+  }
+  return findings.map((finding) => `${finding.line}:${finding.kind}`);
+}
+
+test("flags a MEGA link that holds a decryption key in any link form", () => {
+  assert.deepEqual(
+    megaFindings([
+      `${megaOrigin}/file/${megaNode}#${megaKey}`,
+      `"Link": "${megaOrigin}/folder/${megaNode}#${megaKey}/file/${megaNode}",`,
+      `${megaHost}/file/${megaNode}#${megaKey}`,
+      `${megaOrigin}/#!${megaNode}!${megaKey}`,
+      `${megaOrigin}/#F!${megaNode}!${megaKey}`,
+      `${legacyMegaOrigin}/#!${megaNode}!${megaKey}`,
+      `${megaOrigin}/file/<redacted>#${megaKey}`,
+    ]),
+    [
+      "1:MEGA link with a decryption key",
+      "2:MEGA link with a decryption key",
+      "3:MEGA link with a decryption key",
+      "4:MEGA link with a decryption key",
+      "5:MEGA link with a decryption key",
+      "6:MEGA link with a decryption key",
+      "7:MEGA link with a decryption key",
+    ],
+  );
+});
+
+test("flags a MEGA link that names a real node without a key", () => {
+  assert.deepEqual(
+    megaFindings([
+      `${megaOrigin}/file/${megaNode}`,
+      `${megaOrigin}/#!${megaNode}`,
+    ]),
+    ["1:MEGA link with a real node id", "2:MEGA link with a real node id"],
+  );
+});
+
+test("allows MEGA links whose node and key are placeholders", () => {
+  assert.deepEqual(
+    megaFindings([
+      `"Link": "${megaOrigin}/file/...",`,
+      `${megaOrigin}/file/<redacted-preview>`,
+      `${megaOrigin}/folder/<id>#<key>`,
+      `${megaOrigin}/file/{node}#{key}`,
+      `${megaOrigin}/#!...!...`,
+    ]),
+    [],
+  );
+});
+
+test("treats other MEGA pages as ordinary service URLs", () => {
+  assert.deepEqual(megaFindings([`${megaOrigin}/linux/repo/`]), [
+    "1:non-reserved service URL",
+  ]);
+});
