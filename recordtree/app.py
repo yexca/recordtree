@@ -12,7 +12,7 @@ import sqlite3
 from . import config as config_module
 from . import db
 from . import mega
-from .exceptions import ConfigError, ExternalToolError, ImportRowError, NotFoundError, NotImplementedFeatureError, ValidationError
+from .exceptions import ConfigError, ExternalToolError, ImportRowError, NotFoundError, ValidationError
 from .importer.excel import ExcelImporter
 from .importer.json_importer import JsonImporter
 from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
@@ -41,6 +41,7 @@ from .models import (
     MegaCommandResult,
     MegaCommandStatus,
     MegaAccountStatus,
+    MegaLoginStatus,
     OrphanReport,
     RecordPage,
     RecordDetail,
