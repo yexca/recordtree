@@ -1,401 +1,295 @@
+import { ActionIcon, Alert, Button, Drawer, Group, Loader, Progress, Stack, Table, Text } from '@mantine/core';
 import {
-  Alert,
-  Button,
-  Group,
-  List,
-  Pagination,
-  Progress,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  Title,
-  UnstyledButton,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconFileImport, IconRefresh, IconUpload } from '@tabler/icons-react';
-import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+  IconAlertCircle,
+  IconFileImport,
+  IconFileSpreadsheet,
+  IconRefresh,
+  IconUpload,
+  IconX,
+} from '@tabler/icons-react';
+import { DragEvent, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { ImportErrorPage, ImportJob, ImportPage, ImportResult, Job, JobProgress } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
-import { PlainStatusBadge } from '../components/StatusBadge';
-import { formatBytes, formatText } from '../components/format';
+import type { ImportDetail, ImportErrorPage, ImportJob, ImportPage as ImportPageType } from '../api/types';
+import { useActiveJobs } from '../app/ActiveJobs';
+import { KeyValue, StatCard, TableWrap } from '../components/data';
+import { EmptyState, ErrorBlock, LoadingBlock } from '../components/feedback';
+import { Page, PageHeader, Panel } from '../components/layout';
+import { Pager } from '../components/Pager';
+import { StatusBadge, humanize } from '../components/StatusBadge';
+import { isTerminal, useJobStream } from '../hooks/useJobStream';
+import { errorMessage, formatBytes, formatDateTime, formatNumber, formatRelative, formatText } from '../lib/format';
+import { notifySuccess } from '../lib/notify';
 import { useCachedState } from '../state/pageState';
 
 const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.json', '.db', '.sqlite', '.sqlite3'];
+const HISTORY_PAGE_SIZE = 10;
+const ERROR_PAGE_SIZE = 25;
 
 function extensionOf(file: File) {
   return file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
 }
 
-function progressPercent(progress: JobProgress | null) {
-  if (!progress || !progress.total_rows || progress.total_rows <= 0) return 0;
-  return Math.min(100, Math.round((progress.completed_rows / progress.total_rows) * 100));
-}
-
-function Stat({ label, value }: { label: string; value: number | string | null }) {
-  return (
-    <Stack gap={2} p="sm" className="section">
-      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-        {label}
-      </Text>
-      <Text fw={700}>{value ?? '-'}</Text>
-    </Stack>
-  );
-}
-
-function ResultSummary({ result }: { result: ImportResult }) {
-  return (
-    <Stack gap="sm">
-      <Group justify="space-between">
-        <Title order={3} size="h4">
-          Import Summary
-        </Title>
-        <PlainStatusBadge value={result.status} />
-      </Group>
-      <SimpleGrid cols={{ base: 2, md: 4 }}>
-        <Stat label="Import ID" value={result.import_id} />
-        <Stat label="Source type" value={result.source_type} />
-        <Stat label="Total rows" value={result.stats.total_rows} />
-        <Stat label="Errors" value={result.stats.error_count} />
-        <Stat label="Inserted groups" value={result.stats.inserted_groups} />
-        <Stat label="Updated groups" value={result.stats.updated_groups} />
-        <Stat label="Link sets changed" value={result.stats.link_sets_changed} />
-        <Stat label="Inserted links" value={result.stats.inserted_links} />
-        <Stat label="Skipped links" value={result.stats.skipped_links} />
-        <Stat label="Error CSV" value={result.error_csv_path} />
-      </SimpleGrid>
-      <Table withTableBorder fz="sm">
-        <Table.Tbody>
-          <Table.Tr>
-            <Table.Th w={160}>Source path</Table.Th>
-            <Table.Td className="url-cell">{result.source_path}</Table.Td>
-          </Table.Tr>
-          <Table.Tr>
-            <Table.Th>Notes</Table.Th>
-            <Table.Td>{result.notes || '-'}</Table.Td>
-          </Table.Tr>
-        </Table.Tbody>
-      </Table>
-    </Stack>
-  );
-}
-
-function asImportJob(job: Job): ImportJob {
-  return job as ImportJob;
-}
-
-export default function ImportPage() {
+function UploadPanel({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   const [file, setFile] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [job, setJob] = useCachedState<ImportJob | null>('import.job', null);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useCachedState<ImportPage | null>('import.history', null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyPage, setHistoryPage] = useCachedState('import.historyPage', 1);
-  const [selectedImportId, setSelectedImportId] = useCachedState<number | null>('import.selectedImportId', null);
-  const [importErrors, setImportErrors] = useCachedState<ImportErrorPage | null>('import.importErrors', null);
-  const timerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const supported = file ? ACCEPTED_EXTENSIONS.includes(extensionOf(file)) : false;
 
-  const canUpload = useMemo(() => file && ACCEPTED_EXTENSIONS.includes(extensionOf(file)), [file]);
-  const percent = progressPercent(job?.progress ?? null);
-
-  useEffect(() => {
-    if (!job || job.status === 'completed' || job.status === 'failed') return;
-    let lastEventId = job.events.at(-1)?.index ?? 0;
-    const source = new EventSource(`/api/jobs/${encodeURIComponent(job.id)}/events?after=${lastEventId}`);
-    source.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        lastEventId = Number(payload.index ?? lastEventId);
-        setJob((current) => {
-          if (!current || current.id !== job.id) return current;
-          const events = current.events.some((item) => item.index === payload.index)
-            ? current.events
-            : [...current.events, payload];
-          return {
-            ...current,
-            events,
-            progress: payload.type === 'progress' ? payload.data : current.progress,
-            status: payload.type === 'completed' ? 'completed' : payload.type === 'failed' ? 'failed' : current.status,
-            result: payload.type === 'completed' ? payload.data.result : current.result,
-            error: payload.type === 'failed' ? String(payload.data.error ?? 'Import failed') : current.error,
-          };
-        });
-      } catch {
-        // Fall back to polling if an event cannot be parsed.
-      }
-    };
-    source.addEventListener('completed', source.onmessage);
-    source.addEventListener('failed', source.onmessage);
-    source.addEventListener('progress', source.onmessage);
-    source.onerror = () => {
-      source.close();
-    };
-    timerRef.current = window.setInterval(async () => {
-      try {
-        setJob(asImportJob(await api.job(job.id)));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Job polling failed');
-      }
-    }, 1000);
-    return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current);
-      source.close();
-    };
-  }, [job?.id, job?.status]);
-
-  const loadHistory = async (page = historyPage) => {
-    try {
-      setHistoryError(null);
-      setHistory(await api.imports({ page, page_size: 10 }));
-    } catch (err) {
-      setHistoryError(err instanceof Error ? err.message : 'Import history failed to load');
-    }
+  const pick = (files: FileList | null) => {
+    setError(null);
+    setFile(files?.[0] ?? null);
   };
 
-  useEffect(() => {
-    loadHistory(historyPage);
-  }, [historyPage]);
+  const onDrop = (event: DragEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setDragging(false);
+    pick(event.dataTransfer.files);
+  };
 
-  useEffect(() => {
-    if (job?.status === 'completed' || job?.status === 'failed') {
-      loadHistory(historyPage);
-    }
-  }, [job?.status]);
-
-  const startImport = async () => {
-    if (!file || !canUpload) return;
+  const start = async () => {
+    if (!file || !supported) return;
     setUploading(true);
     setError(null);
     try {
       const created = await api.createImport(file);
-      const next = await api.job(created.job_id);
-      setJob(asImportJob(next));
-      loadHistory(1);
-      notifications.show({ color: 'teal', title: 'Import queued', message: file.name });
+      onStarted((await api.job(created.job_id)) as ImportJob);
+      notifySuccess('Import queued', file.name);
+      setFile(null);
+      if (inputRef.current) inputRef.current.value = '';
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(errorMessage(err, 'Import failed'));
     } finally {
       setUploading(false);
     }
   };
 
-  const pickFile = (selected: FileList | null) => {
-    setFile(selected?.[0] ?? null);
-  };
-
-  const dropFile = (event: DragEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    pickFile(event.dataTransfer.files);
-  };
-
-  const openImportErrors = async (importId: number) => {
-    if (selectedImportId === importId) {
-      setSelectedImportId(null);
-      setImportErrors(null);
-      return;
-    }
-    setSelectedImportId(importId);
-    try {
-      setImportErrors(await api.importErrors(importId, 1, 20));
-    } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Import errors unavailable',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  };
-
   return (
-    <Stack gap="md">
-      <div>
-        <Title order={2}>Import</Title>
-        <Text size="sm" c="dimmed">
-          Upload a source file and track the background import job
-        </Text>
-      </div>
-
-      <Stack p="md" className="section" gap="md">
+    <Panel title="Upload" description="Excel sheets, legacy JSON exports, or legacy SQLite databases.">
+      <Stack gap="md">
         <input
           ref={inputRef}
           type="file"
           accept={ACCEPTED_EXTENSIONS.join(',')}
           hidden
-          onChange={(event) => pickFile(event.currentTarget.files)}
+          onChange={(event) => pick(event.currentTarget.files)}
         />
-        <UnstyledButton
-          className="dropzone"
-          onClick={() => inputRef.current?.click()}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={dropFile}
+        <button
+          type="button"
+          className="rt-dropzone"
+          data-dragging={dragging || undefined}
           disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
         >
-          <Group justify="center" gap="md" mih={120}>
-            <IconUpload size={28} />
-            <Stack gap={2}>
-              <Text fw={700}>{file ? file.name : 'Select or drop an import file'}</Text>
-              <Text size="sm" c="dimmed">
-                .xlsx, .xlsm, .json, .db, .sqlite, .sqlite3
-              </Text>
-            </Stack>
-          </Group>
-        </UnstyledButton>
+          <span className="rt-dropzone-icon">
+            <IconUpload size={22} />
+          </span>
+          <Text fw={650} size="sm" c="var(--rt-ink)">
+            Drop a file here or click to browse
+          </Text>
+          <Text size="xs" c="dimmed">
+            {ACCEPTED_EXTENSIONS.join('  ')}
+          </Text>
+        </button>
 
-        {file && !canUpload && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            Unsupported file extension.
-          </Alert>
-        )}
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
+        {file ? (
+          <div className="rt-file-chip">
+            <IconFileSpreadsheet size={20} style={{ color: 'var(--rt-accent)', flex: '0 0 auto' }} />
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <Text size="sm" fw={600} className="rt-truncate" title={file.name}>
+                {file.name}
+              </Text>
+              <Text size="xs" c={supported ? 'dimmed' : 'red'}>
+                {supported ? formatBytes(file.size) : 'Unsupported file type'}
+              </Text>
+            </div>
+            <ActionIcon variant="subtle" color="gray" aria-label="Remove file" onClick={() => setFile(null)} disabled={uploading}>
+              <IconX size={16} />
+            </ActionIcon>
+          </div>
+        ) : null}
+
+        {error ? (
+          <Alert color="red" variant="light" icon={<IconAlertCircle size={18} />}>
             {error}
           </Alert>
-        )}
+        ) : null}
 
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">
-            {job ? `Job ${job.id}` : 'No import job started.'}
-          </Text>
-          <Button
-            leftSection={<IconFileImport size={16} />}
-            onClick={startImport}
-            disabled={!canUpload || uploading}
-            loading={uploading}
-          >
-            Start Import
-          </Button>
-        </Group>
+        <Button
+          leftSection={<IconFileImport size={16} />}
+          onClick={start}
+          disabled={!file || !supported}
+          loading={uploading}
+        >
+          Start import
+        </Button>
       </Stack>
+    </Panel>
+  );
+}
 
-      {job && (
-        <Stack p="md" className="section" gap="md">
-          <Group justify="space-between">
-            <Title order={3} size="h4">
-              Progress
-            </Title>
-            <PlainStatusBadge value={job.status} />
-          </Group>
-          <Progress value={percent} animated={job.status === 'running'} />
-          <SimpleGrid cols={{ base: 2, md: 4 }}>
-            <Stat label="Phase" value={job.progress?.phase ?? job.status} />
-            <Stat label="Completed rows" value={job.progress?.completed_rows ?? 0} />
-            <Stat label="Total rows" value={job.progress?.total_rows ?? '-'} />
-            <Stat label="Source type" value={job.progress?.source_type ?? '-'} />
-          </SimpleGrid>
-          {job.error && (
-            <Alert color="red" icon={<IconAlertCircle size={18} />}>
-              {job.error}
-            </Alert>
-          )}
-          {job.result && <ResultSummary result={job.result} />}
-          <List size="sm" spacing={4}>
-            {job.events.slice(-5).map((event) => (
-              <List.Item key={event.index}>
-                <Text span c="dimmed">
-                  {event.created_at}
-                </Text>{' '}
-                {event.type}
-              </List.Item>
-            ))}
-          </List>
-        </Stack>
-      )}
+function JobPanel({ job, onDismiss }: { job: ImportJob | null; onDismiss: () => void }) {
+  if (!job) {
+    return (
+      <Panel title="Current import">
+        <EmptyState
+          compact
+          icon={<IconFileImport size={20} />}
+          message="Imports run in the background. Progress appears here once a file is uploaded."
+        />
+      </Panel>
+    );
+  }
+  const progress = job.progress;
+  const percent =
+    progress?.total_rows && progress.total_rows > 0
+      ? Math.min(100, Math.round((progress.completed_rows / progress.total_rows) * 100))
+      : job.status === 'completed'
+        ? 100
+        : 0;
+  const result = job.result;
+  const running = !isTerminal(job.status);
+  const fileName = String(job.target?.source_path ?? progress?.source_path ?? result?.source_path ?? '').split(/[\\/]/).pop();
 
-      <Stack p="md" className="section" gap="md">
-        <Group justify="space-between" align="end">
-          <div>
-            <Title order={3} size="h4">
-              Import History
-            </Title>
-            <Text size="sm" c="dimmed">
-              Completed and failed imports recorded in SQLite
-            </Text>
-          </div>
-          <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => loadHistory()}>
-            Refresh
-          </Button>
+  return (
+    <Panel
+      title="Current import"
+      description={fileName || `Job ${job.id.slice(0, 8)}`}
+      actions={
+        <Group gap={6}>
+          <StatusBadge value={result?.status ?? job.status} />
+          {!running ? (
+            <ActionIcon variant="subtle" color="gray" aria-label="Dismiss" onClick={onDismiss}>
+              <IconX size={16} />
+            </ActionIcon>
+          ) : null}
         </Group>
-        {historyError && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {historyError}
+      }
+    >
+      <Stack gap="md">
+        <Stack gap={6}>
+          <Group justify="space-between">
+            <Text size="sm" fw={600}>
+              {running ? humanize(progress?.phase ?? job.status) : job.status === 'failed' ? 'Failed' : 'Finished'}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {formatNumber(progress?.completed_rows ?? 0)} / {progress?.total_rows ? formatNumber(progress.total_rows) : '?'} rows
+            </Text>
+          </Group>
+          <Progress value={percent} animated={running} striped={running} size="md" radius="xl" />
+        </Stack>
+
+        {job.error ? (
+          <Alert color="red" variant="light" icon={<IconAlertCircle size={18} />}>
+            {job.error}
           </Alert>
+        ) : null}
+
+        {result ? (
+          <>
+            <div className="rt-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
+              <StatCard compact label="New groups" value={formatNumber(result.stats.inserted_groups)} />
+              <StatCard compact label="Updated" value={formatNumber(result.stats.updated_groups)} />
+              <StatCard compact label="New links" value={formatNumber(result.stats.inserted_links)} />
+              <StatCard compact label="Errors" value={formatNumber(result.stats.error_count)} />
+            </div>
+            <KeyValue
+              columns={2}
+              items={[
+                { label: 'Import ID', value: `#${result.import_id}` },
+                { label: 'Source type', value: result.source_type },
+                { label: 'Total rows', value: formatNumber(result.stats.total_rows) },
+                { label: 'Skipped groups', value: formatNumber(result.stats.skipped_groups) },
+                { label: 'Link sets changed', value: formatNumber(result.stats.link_sets_changed) },
+                { label: 'Skipped links', value: formatNumber(result.stats.skipped_links) },
+                ...(result.error_csv_path ? [{ label: 'Error CSV', value: result.error_csv_path, mono: true, full: true }] : []),
+                ...(result.extra_columns.length
+                  ? [{ label: 'Extra columns', value: result.extra_columns.join(', '), full: true }]
+                  : []),
+                ...(result.notes ? [{ label: 'Notes', value: result.notes, full: true }] : []),
+              ]}
+            />
+          </>
+        ) : (
+          <Stack gap={4}>
+            {job.events.slice(-4).map((event) => (
+              <Group key={event.index} gap={8} wrap="nowrap">
+                <span className="rt-dot" style={{ background: 'var(--rt-border-strong)' }} />
+                <Text size="xs" c="dimmed" className="rt-mono">
+                  {formatDateTime(event.created_at).slice(11)}
+                </Text>
+                <Text size="xs">{humanize(event.type)}</Text>
+              </Group>
+            ))}
+          </Stack>
         )}
-        {!history ? (
+      </Stack>
+    </Panel>
+  );
+}
+
+function ImportDrawerBody({ item }: { item: ImportDetail }) {
+  const [errors, setErrors] = useState<ImportErrorPage | null>(null);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    api
+      .importErrors(item.id, page, ERROR_PAGE_SIZE)
+      .then((next) => !cancelled && setErrors(next))
+      .catch((err) => !cancelled && setError(errorMessage(err)));
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, page]);
+
+  return (
+    <Stack gap="lg">
+      <KeyValue
+        items={[
+          { label: 'File', value: item.source_file_name, full: true },
+          { label: 'Source type', value: item.source_type },
+          { label: 'File size', value: formatBytes(item.source_file_size) },
+          { label: 'Started', value: formatDateTime(item.started_at) },
+          { label: 'Finished', value: formatDateTime(item.finished_at) },
+          { label: 'Total rows', value: formatNumber(item.total_rows) },
+          { label: 'New groups', value: formatNumber(item.inserted_groups) },
+          { label: 'Updated groups', value: formatNumber(item.updated_groups) },
+          { label: 'Skipped groups', value: formatNumber(item.skipped_groups) },
+          { label: 'Link sets changed', value: formatNumber(item.link_sets_changed) },
+          { label: 'New links', value: formatNumber(item.inserted_links) },
+          { label: 'Skipped links', value: formatNumber(item.skipped_links) },
+          { label: 'Errors', value: formatNumber(item.error_count) },
+          { label: 'Source path', value: item.source_path, mono: true, full: true },
+          ...(item.notes ? [{ label: 'Notes', value: item.notes, full: true }] : []),
+        ]}
+      />
+      <Stack gap={8}>
+        <Text fw={650} size="sm">
+          Row errors
+        </Text>
+        {error ? (
+          <ErrorBlock message={error} />
+        ) : !errors ? (
+          <LoadingBlock />
+        ) : errors.items.length === 0 ? (
           <Text size="sm" c="dimmed">
-            Loading history...
+            No row errors were recorded for this import.
           </Text>
-        ) : history.items.length === 0 ? (
-          <EmptyState message="No imports recorded yet." />
         ) : (
           <>
-            <div className="table-scroll">
-              <Table striped highlightOnHover withTableBorder verticalSpacing={6} fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>ID</Table.Th>
-                    <Table.Th>File</Table.Th>
-                    <Table.Th>Type</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Rows</Table.Th>
-                    <Table.Th>Errors</Table.Th>
-                    <Table.Th>Inserted</Table.Th>
-                    <Table.Th>Updated</Table.Th>
-                    <Table.Th>Started</Table.Th>
-                    <Table.Th>Size</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {history.items.map((item) => (
-                    <Table.Tr
-                      key={item.id}
-                      className="click-row"
-                      data-selected={selectedImportId === item.id}
-                      onClick={() => openImportErrors(item.id)}
-                    >
-                      <Table.Td>{item.id}</Table.Td>
-                      <Table.Td className="truncate-cell" title={item.source_path}>
-                        {item.source_file_name}
-                      </Table.Td>
-                      <Table.Td>{item.source_type}</Table.Td>
-                      <Table.Td>
-                        <PlainStatusBadge value={item.status} />
-                      </Table.Td>
-                      <Table.Td>{item.total_rows}</Table.Td>
-                      <Table.Td>{item.error_count}</Table.Td>
-                      <Table.Td>{item.inserted_groups}</Table.Td>
-                      <Table.Td>{item.updated_groups}</Table.Td>
-                      <Table.Td className="nowrap">{item.started_at}</Table.Td>
-                      <Table.Td className="nowrap">{formatBytes(item.source_file_size)}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">
-                {history.total} imports
-              </Text>
-              <Pagination value={historyPage} onChange={setHistoryPage} total={Math.max(1, history.total_pages)} />
-            </Group>
-          </>
-        )}
-        {selectedImportId && (
-          <Stack gap="sm">
-            <Title order={4} size="h5">
-              Import #{selectedImportId} Errors
-            </Title>
-            {!importErrors ? (
-              <Text size="sm" c="dimmed">
-                Loading errors...
-              </Text>
-            ) : importErrors.items.length === 0 ? (
-              <EmptyState message="No row errors recorded for this import." />
-            ) : (
-              <div className="table-scroll">
-                <Table striped withTableBorder verticalSpacing={6} fz="sm">
+            <div className="rt-panel">
+              <TableWrap>
+                <Table fz="xs">
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Row</Table.Th>
@@ -405,21 +299,202 @@ export default function ImportPage() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {importErrors.items.map((item) => (
-                      <Table.Tr key={item.id}>
-                        <Table.Td>{formatText(item.row_number == null ? null : String(item.row_number))}</Table.Td>
-                        <Table.Td>{item.error_type}</Table.Td>
-                        <Table.Td>{item.message}</Table.Td>
-                        <Table.Td className="url-cell">{formatText(item.raw_value)}</Table.Td>
+                    {errors.items.map((row) => (
+                      <Table.Tr key={row.id}>
+                        <Table.Td className="rt-id">{formatText(row.row_number)}</Table.Td>
+                        <Table.Td className="rt-nowrap">{row.error_type}</Table.Td>
+                        <Table.Td className="rt-wrap">{row.message}</Table.Td>
+                        <Table.Td className="rt-wrap rt-mono">{formatText(row.raw_value)}</Table.Td>
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
                 </Table>
-              </div>
-            )}
-          </Stack>
+              </TableWrap>
+            </div>
+            <Pager
+              compact
+              page={page}
+              pageSize={ERROR_PAGE_SIZE}
+              total={errors.total}
+              totalPages={errors.total_pages}
+              noun="errors"
+              onPageChange={setPage}
+            />
+          </>
         )}
       </Stack>
     </Stack>
+  );
+}
+
+export default function ImportPage() {
+  const [job, setJob] = useCachedState<ImportJob | null>('import.job', null);
+  const [history, setHistory] = useCachedState<ImportPageType | null>('import.history', null);
+  const [historyPage, setHistoryPage] = useCachedState('import.historyPage', 1);
+  const [selectedId, setSelectedId] = useCachedState<number | null>('import.selectedId', null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const { refresh: refreshJobs } = useActiveJobs();
+
+  useJobStream(job, setJob);
+
+  const loadHistory = async (page = historyPage) => {
+    setLoading(true);
+    setHistoryError(null);
+    try {
+      setHistory(await api.imports({ page, page_size: HISTORY_PAGE_SIZE }));
+    } catch (err) {
+      setHistoryError(errorMessage(err, 'Import history failed to load'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadHistory(historyPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyPage]);
+
+  useEffect(() => {
+    if (job && isTerminal(job.status)) void loadHistory(historyPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status]);
+
+  const selected = history?.items.find((item) => item.id === selectedId) ?? null;
+
+  return (
+    <Page>
+      <PageHeader
+        eyebrow="Transfers"
+        title="Import"
+        description="Load record sources into the local SQLite database. Existing groups are updated in place."
+      />
+
+      <div className="rt-grid rt-grid-2" style={{ alignItems: 'start' }}>
+        <UploadPanel
+          onStarted={(next) => {
+            setJob(next);
+            void refreshJobs();
+            void loadHistory(1);
+            setHistoryPage(1);
+          }}
+        />
+        <JobPanel job={job} onDismiss={() => setJob(null)} />
+      </div>
+
+      <Panel
+        title={
+          <Group gap={8}>
+            <span>History</span>
+            {history ? (
+              <Text span size="sm" c="dimmed" fw={500}>
+                {formatNumber(history.total)}
+              </Text>
+            ) : null}
+            {loading ? <Loader size={14} /> : null}
+          </Group>
+        }
+        description="Select an import to see its counters and row errors."
+        actions={
+          <Button variant="default" size="xs" leftSection={<IconRefresh size={14} />} onClick={() => void loadHistory()}>
+            Refresh
+          </Button>
+        }
+        flush
+        footer={
+          history && history.total > 0 ? (
+            <div style={{ width: '100%' }}>
+              <Pager
+                page={historyPage}
+                pageSize={HISTORY_PAGE_SIZE}
+                total={history.total}
+                totalPages={history.total_pages}
+                noun="imports"
+                onPageChange={setHistoryPage}
+              />
+            </div>
+          ) : null
+        }
+      >
+        {historyError ? (
+          <div style={{ padding: 16 }}>
+            <ErrorBlock message={historyError} onRetry={() => void loadHistory()} />
+          </div>
+        ) : !history ? (
+          <LoadingBlock />
+        ) : history.items.length === 0 ? (
+          <EmptyState compact message="No imports recorded yet." />
+        ) : (
+          <TableWrap>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>ID</Table.Th>
+                  <Table.Th>File</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Rows</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>New</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Updated</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Errors</Table.Th>
+                  <Table.Th>Started</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {history.items.map((item) => (
+                  <Table.Tr
+                    key={item.id}
+                    data-clickable="true"
+                    data-selected={selectedId === item.id || undefined}
+                    tabIndex={0}
+                    onClick={() => setSelectedId(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') setSelectedId(item.id);
+                    }}
+                  >
+                    <Table.Td className="rt-id">{item.id}</Table.Td>
+                    <Table.Td className="rt-cell-title">
+                      <span className="rt-record-title rt-truncate" title={item.source_path}>
+                        {item.source_file_name}
+                      </span>
+                      <span className="rt-record-sub">
+                        {item.source_type} · {formatBytes(item.source_file_size)}
+                      </span>
+                    </Table.Td>
+                    <Table.Td>
+                      <StatusBadge value={item.status} />
+                    </Table.Td>
+                    <Table.Td className="rt-num">{formatNumber(item.total_rows)}</Table.Td>
+                    <Table.Td className="rt-num">{formatNumber(item.inserted_groups)}</Table.Td>
+                    <Table.Td className="rt-num">{formatNumber(item.updated_groups)}</Table.Td>
+                    <Table.Td className="rt-num" style={item.error_count ? { color: 'var(--rt-status-bad)', fontWeight: 650 } : undefined}>
+                      {formatNumber(item.error_count)}
+                    </Table.Td>
+                    <Table.Td className="rt-nowrap" title={formatDateTime(item.started_at)}>
+                      {formatRelative(item.started_at)}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </TableWrap>
+        )}
+      </Panel>
+
+      <Drawer
+        opened={selected !== null}
+        onClose={() => setSelectedId(null)}
+        size="lg"
+        title={
+          selected ? (
+            <Group gap="sm">
+              <Text fw={650}>Import #{selected.id}</Text>
+              <StatusBadge value={selected.status} />
+            </Group>
+          ) : null
+        }
+      >
+        {selected ? <ImportDrawerBody key={selected.id} item={selected} /> : null}
+      </Drawer>
+    </Page>
   );
 }

@@ -1,165 +1,248 @@
-import { Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { Button, Group, Skeleton, Stack, Text } from '@mantine/core';
+import {
+  IconArrowRight,
+  IconBuildingBroadcastTower,
+  IconDownload,
+  IconFileImport,
+  IconLink,
+  IconListSearch,
+  IconStack2,
+  IconUsers,
+} from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { DownloadPage, ImportPage, StatsResult } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
-import { ErrorBlock } from '../components/LoadingError';
-import { PlainStatusBadge } from '../components/StatusBadge';
-import { formatBytes } from '../components/format';
+import type { Navigate } from '../App';
+import { useActiveJobs } from '../app/ActiveJobs';
+import { CoverageMeter, StatCard } from '../components/data';
+import { EmptyState, ErrorBlock } from '../components/feedback';
+import { Page, PageHeader, Panel } from '../components/layout';
+import { StatusBadge } from '../components/StatusBadge';
+import { errorMessage, formatBytes, formatNumber, formatPercent, formatRelative } from '../lib/format';
 
-function Metric({ label, value }: { label: string; value: number | string }) {
+function ActivitySkeleton() {
   return (
-    <Stack gap={2} p="md" className="section">
-      <Text size="xs" c="dimmed" tt="uppercase" fw={700}>
-        {label}
-      </Text>
-      <Text size="xl" fw={700}>
-        {value}
-      </Text>
+    <Stack gap={14} p="md">
+      {[0, 1, 2].map((index) => (
+        <Group key={index} gap="sm" wrap="nowrap">
+          <Skeleton height={32} width={32} radius="md" />
+          <Stack gap={6} style={{ flex: 1 }}>
+            <Skeleton height={10} width="55%" />
+            <Skeleton height={8} width="30%" />
+          </Stack>
+        </Group>
+      ))}
     </Stack>
   );
 }
 
-export default function Dashboard({ onOpenRecord }: { onOpenRecord: (id: number) => void }) {
+export default function Dashboard({
+  navigate,
+  onOpenRecord,
+}: {
+  navigate: Navigate;
+  onOpenRecord: (id: number) => void;
+}) {
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [imports, setImports] = useState<ImportPage | null>(null);
   const [downloads, setDownloads] = useState<DownloadPage | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [importsError, setImportsError] = useState<string | null>(null);
   const [downloadsError, setDownloadsError] = useState<string | null>(null);
+  const { jobs, finishedTick } = useActiveJobs();
 
-  useEffect(() => {
+  const loadStats = () => {
+    setStatsError(null);
     api
       .stats()
       .then(setStats)
-      .catch((err: Error) => setStatsError(err.message));
+      .catch((err) => setStatsError(errorMessage(err)));
+  };
+
+  useEffect(() => {
+    loadStats();
     api
-      .imports({ page: 1, page_size: 5 })
+      .imports({ page: 1, page_size: 6 })
       .then(setImports)
-      .catch((err: Error) => setImportsError(err.message));
+      .catch((err) => setImportsError(errorMessage(err)));
     api
-      .downloads({ page: 1, page_size: 5 })
+      .downloads({ page: 1, page_size: 6 })
       .then(setDownloads)
-      .catch((err: Error) => setDownloadsError(err.message));
-  }, []);
+      .catch((err) => setDownloadsError(errorMessage(err)));
+  }, [finishedTick]);
+
+  const coverage = stats
+    ? {
+        all: stats.downloaded_all,
+        partial: stats.downloaded_partial,
+        none: stats.downloaded_none,
+        unknown: stats.downloaded_unknown,
+      }
+    : null;
+  const coverageTotal = coverage ? coverage.all + coverage.partial + coverage.none + coverage.unknown : 0;
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between" align="end">
-        <div>
-          <Title order={2}>Dashboard</Title>
-          <Text size="sm" c="dimmed">
-            Local SQLite overview
-          </Text>
-        </div>
-      </Group>
+    <Page>
+      <PageHeader
+        eyebrow="Overview"
+        title="Dashboard"
+        description="Your local record library, download coverage, and recent activity."
+        actions={
+          <>
+            <Button variant="default" leftSection={<IconFileImport size={16} />} onClick={() => navigate('/import')}>
+              Import file
+            </Button>
+            <Button leftSection={<IconListSearch size={16} />} onClick={() => navigate('/records')}>
+              Browse records
+            </Button>
+          </>
+        }
+      />
 
-      <SimpleGrid cols={{ base: 2, md: 5 }}>
-        <Metric label="Record groups" value={stats?.total_record_groups ?? '...'} />
-        <Metric label="Active links" value={stats?.active_link_count ?? '...'} />
-        <Metric label="Inactive links" value={stats?.inactive_link_count ?? '...'} />
-        <Metric label="Actors" value={stats?.actor_count ?? '...'} />
-        <Metric label="Sources" value={stats?.source_count ?? '...'} />
-      </SimpleGrid>
-
-      <SimpleGrid cols={{ base: 2, md: 4 }}>
-        <Metric label="Downloaded all" value={stats?.downloaded_all ?? '...'} />
-        <Metric label="Partial" value={stats?.downloaded_partial ?? '...'} />
-        <Metric label="None" value={stats?.downloaded_none ?? '...'} />
-        <Metric label="Unknown" value={stats?.downloaded_unknown ?? '...'} />
-      </SimpleGrid>
-
-      {statsError ? <ErrorBlock message={statsError} /> : null}
-
-      <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        <Stack p="md" className="section">
-          <Title order={3} size="h4">
-            Recent Imports
-          </Title>
-          {importsError ? (
-            <ErrorBlock message={importsError} />
-          ) : !imports ? (
-            <Text size="sm" c="dimmed">
-              Loading imports...
+      {jobs.length > 0 ? (
+        <a className="rt-health" data-tone="warn" href="#/downloads" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <span className="rt-live-dot" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Text fw={650} size="sm">
+              {jobs.length} background job{jobs.length === 1 ? '' : 's'} running
             </Text>
-          ) : imports.items.length === 0 ? (
-            <EmptyState message="No imports recorded yet." />
-          ) : (
-            <div className="table-scroll">
-              <Table striped withTableBorder verticalSpacing={6} fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>ID</Table.Th>
-                    <Table.Th>File</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Rows</Table.Th>
-                    <Table.Th>Errors</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {imports.items.map((item) => (
-                    <Table.Tr key={item.id}>
-                      <Table.Td>{item.id}</Table.Td>
-                      <Table.Td className="truncate-cell" title={item.source_file_name}>
-                        {item.source_file_name}
-                      </Table.Td>
-                      <Table.Td>
-                        <PlainStatusBadge value={item.status} />
-                      </Table.Td>
-                      <Table.Td>{item.total_rows}</Table.Td>
-                      <Table.Td>{item.error_count}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
-          )}
-        </Stack>
+            <Text size="xs" c="dimmed">
+              {jobs.filter((job) => job.kind === 'download').length} download ·{' '}
+              {jobs.filter((job) => job.kind === 'import').length} import
+            </Text>
+          </div>
+          <IconArrowRight size={16} />
+        </a>
+      ) : null}
 
-        <Stack p="md" className="section">
-          <Title order={3} size="h4">
-            Recent Downloads
-          </Title>
+      {statsError ? <ErrorBlock message={statsError} onRetry={loadStats} /> : null}
+
+      <div className="rt-grid rt-grid-stats">
+        <StatCard
+          label="Record groups"
+          icon={<IconStack2 size={16} />}
+          loading={!stats && !statsError}
+          value={formatNumber(stats?.total_record_groups)}
+        />
+        <StatCard
+          label="Active links"
+          icon={<IconLink size={16} />}
+          loading={!stats && !statsError}
+          value={formatNumber(stats?.active_link_count)}
+          hint={stats ? `${formatNumber(stats.inactive_link_count)} inactive` : undefined}
+        />
+        <StatCard
+          label="Actors"
+          icon={<IconUsers size={16} />}
+          loading={!stats && !statsError}
+          value={formatNumber(stats?.actor_count)}
+        />
+        <StatCard
+          label="Platforms"
+          icon={<IconBuildingBroadcastTower size={16} />}
+          loading={!stats && !statsError}
+          value={formatNumber(stats?.source_count)}
+        />
+      </div>
+
+      <Panel
+        title="Download coverage"
+        description="Record groups by how many of their active links have been downloaded."
+        actions={
+          coverage ? (
+            <Text size="sm" c="dimmed">
+              <Text span fw={700} c="var(--rt-ink)" fz={20}>
+                {formatPercent(coverage.all, coverageTotal)}
+              </Text>{' '}
+              fully downloaded
+            </Text>
+          ) : null
+        }
+      >
+        {coverage ? <CoverageMeter counts={coverage} /> : <Skeleton height={12} radius="sm" />}
+      </Panel>
+
+      <div className="rt-grid rt-grid-2">
+        <Panel
+          title="Recent downloads"
+          flush
+          actions={
+            <Button variant="subtle" size="compact-sm" rightSection={<IconArrowRight size={14} />} onClick={() => navigate('/downloads')}>
+              All downloads
+            </Button>
+          }
+        >
           {downloadsError ? (
-            <ErrorBlock message={downloadsError} />
+            <div style={{ padding: 16 }}>
+              <ErrorBlock message={downloadsError} />
+            </div>
           ) : !downloads ? (
-            <Text size="sm" c="dimmed">
-              Loading downloads...
-            </Text>
+            <ActivitySkeleton />
           ) : downloads.items.length === 0 ? (
-            <EmptyState message="No downloads recorded yet." />
+            <EmptyState compact message="No downloads yet. Open a record to plan one." icon={<IconDownload size={20} />} />
           ) : (
-            <div className="table-scroll">
-              <Table striped withTableBorder verticalSpacing={6} fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>ID</Table.Th>
-                    <Table.Th>Record</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Bytes</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {downloads.items.map((item) => (
-                    <Table.Tr
-                      key={item.id}
-                      className="click-row"
-                      onClick={() => onOpenRecord(item.record_group_id)}
-                    >
-                      <Table.Td>{item.id}</Table.Td>
-                      <Table.Td>{item.record_group_id}</Table.Td>
-                      <Table.Td>
-                        <PlainStatusBadge value={item.status} />
-                      </Table.Td>
-                      <Table.Td>{formatBytes(item.selected_bytes)}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
+            <div className="rt-activity">
+              {downloads.items.map((item) => (
+                <button key={item.id} type="button" className="rt-activity-item" onClick={() => onOpenRecord(item.record_group_id)}>
+                  <span className="rt-activity-icon">
+                    <IconDownload size={16} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="rt-activity-title rt-truncate" title={item.record_title}>
+                      {item.record_title || `Record #${item.record_group_id}`}
+                    </span>
+                    <span className="rt-activity-meta rt-truncate">
+                      {[item.actor, formatBytes(item.selected_bytes), formatRelative(item.requested_at)].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <StatusBadge value={item.status} />
+                </button>
+              ))}
             </div>
           )}
-        </Stack>
-      </SimpleGrid>
-    </Stack>
+        </Panel>
+
+        <Panel
+          title="Recent imports"
+          flush
+          actions={
+            <Button variant="subtle" size="compact-sm" rightSection={<IconArrowRight size={14} />} onClick={() => navigate('/import')}>
+              Import history
+            </Button>
+          }
+        >
+          {importsError ? (
+            <div style={{ padding: 16 }}>
+              <ErrorBlock message={importsError} />
+            </div>
+          ) : !imports ? (
+            <ActivitySkeleton />
+          ) : imports.items.length === 0 ? (
+            <EmptyState compact message="No imports yet. Upload an Excel, JSON, or SQLite file." icon={<IconFileImport size={20} />} />
+          ) : (
+            <div className="rt-activity">
+              {imports.items.map((item) => (
+                <div key={item.id} className="rt-activity-item">
+                  <span className="rt-activity-icon">
+                    <IconFileImport size={16} />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className="rt-activity-title rt-truncate" title={item.source_file_name}>
+                      {item.source_file_name}
+                    </span>
+                    <span className="rt-activity-meta rt-truncate">
+                      {formatNumber(item.total_rows)} rows · {formatNumber(item.inserted_groups)} new ·{' '}
+                      {formatNumber(item.updated_groups)} updated
+                      {item.error_count ? ` · ${formatNumber(item.error_count)} errors` : ''} · {formatRelative(item.started_at)}
+                    </span>
+                  </span>
+                  <StatusBadge value={item.status} />
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+    </Page>
   );
 }

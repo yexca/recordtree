@@ -1,375 +1,454 @@
-import {
-  Alert,
-  Button,
-  Group,
-  Pagination,
-  SimpleGrid,
-  Stack,
-  Table,
-  Text,
-  Textarea,
-  Title,
-} from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconAlertCircle, IconExternalLink, IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Badge, Button, Drawer, Group, Loader, SegmentedControl, Stack, Table, Text } from '@mantine/core';
+import { IconDownload, IconExternalLink, IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { DownloadItemDetail, DownloadPage, Job } from '../api/types';
-import { EmptyState } from '../components/EmptyState';
-import { PlainStatusBadge } from '../components/StatusBadge';
-import { formatBytes, formatText, previewUrl } from '../components/format';
+import type { DownloadDetail, DownloadItemDetail, DownloadPage, Job } from '../api/types';
+import { useActiveJobs } from '../app/ActiveJobs';
+import { KeyValue, LinkProgress, TableWrap } from '../components/data';
+import { EmptyState, ErrorBlock, LoadingBlock } from '../components/feedback';
+import { Page, PageHeader, Panel } from '../components/layout';
+import { LogViewer } from '../components/LogViewer';
+import { Pager } from '../components/Pager';
+import { StatusBadge } from '../components/StatusBadge';
+import { jobOutput } from '../hooks/useJobStream';
+import { errorMessage, formatBytes, formatDateTime, formatNumber, formatRelative, formatText, previewUrl } from '../lib/format';
+import { notifyError, notifySuccess } from '../lib/notify';
 import { useCachedState } from '../state/pageState';
 
-function outputText(job: Job) {
-  return job.events
-    .filter((event) => event.type === 'output')
-    .map((event) => String(event.data.chunk ?? ''))
-    .join('');
-}
+const RESUMABLE_STATUSES = new Set(['interrupted', 'failed', 'cancelled', 'blocked']);
+const PAGE_SIZE = 20;
 
-function jobTarget(job: Job) {
+const STATUS_FILTERS = [
+  { value: 'any', label: 'All' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'failed', label: 'Failed' },
+  { value: 'interrupted', label: 'Interrupted' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
+
+function jobTitle(job: Job) {
   if (job.target?.record_id_or_key) return `Record ${String(job.target.record_id_or_key)}`;
-  if (job.target?.actor_id) return `Actor ${String(job.target.actor_id)}`;
+  if (job.target?.actor_id) return `Actor #${String(job.target.actor_id)} batch`;
   return 'Download job';
 }
 
-const RESUMABLE_STATUSES = new Set(['interrupted', 'failed', 'cancelled', 'blocked']);
-
-export default function Downloads() {
-  const [activeJobs, setActiveJobs] = useState<Job[]>([]);
-  const [history, setHistory] = useCachedState<DownloadPage | null>('downloads.history', null);
-  const [items, setItems] = useCachedState<DownloadItemDetail[]>('downloads.items', []);
-  const [downloadLog, setDownloadLog] = useCachedState<string | null>('downloads.downloadLog', null);
-  const [selectedDownloadId, setSelectedDownloadId] = useCachedState<number | null>('downloads.selectedDownloadId', null);
-  const [page, setPage] = useCachedState('downloads.page', 1);
-  const [error, setError] = useState<string | null>(null);
-  const [resumingId, setResumingId] = useState<number | null>(null);
-
-  const selectedDownload = useMemo(
-    () => history?.items.find((item) => item.id === selectedDownloadId) ?? null,
-    [history, selectedDownloadId],
+function ActiveJobCard({ job, onOpenRecord }: { job: Job; onOpenRecord: (id: string) => void }) {
+  const recordKey = job.target?.record_id_or_key ? String(job.target.record_id_or_key) : null;
+  const optionChips = [
+    job.options.types ? `types: ${String(job.options.types)}` : 'all types',
+    job.options.include_par2 ? '+ .par2' : null,
+    job.options.count ? `${String(job.options.count)} records` : null,
+  ].filter(Boolean) as string[];
+  return (
+    <div className="rt-job">
+      <Group justify="space-between" wrap="nowrap" gap="sm">
+        <Group gap={10} wrap="nowrap" style={{ minWidth: 0 }}>
+          <span className="rt-live-dot" />
+          <div style={{ minWidth: 0 }}>
+            <Text fw={650} size="sm" className="rt-truncate">
+              {jobTitle(job)}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Started {formatRelative(job.started_at ?? job.created_at)} · <span className="rt-mono">{job.id.slice(0, 8)}</span>
+            </Text>
+          </div>
+        </Group>
+        <Group gap={6} wrap="nowrap">
+          <StatusBadge value={job.status} />
+          {recordKey ? (
+            <Button size="compact-xs" variant="subtle" onClick={() => onOpenRecord(recordKey)}>
+              Open
+            </Button>
+          ) : null}
+        </Group>
+      </Group>
+      <Group gap={6}>
+        {optionChips.map((chip) => (
+          <Badge key={chip} color="gray" variant="light" size="sm" styles={{ label: { textTransform: 'none' } }}>
+            {chip}
+          </Badge>
+        ))}
+        {job.options.output ? (
+          <Text size="xs" c="dimmed" className="rt-mono rt-truncate" title={String(job.options.output)}>
+            → {String(job.options.output)}
+          </Text>
+        ) : null}
+      </Group>
+      <LogViewer text={jobOutput(job)} placeholder="Waiting for MEGAcmd output…" maxHeight={220} />
+    </div>
   );
+}
 
-  const loadActiveJobs = async () => {
-    try {
-      setActiveJobs(await api.jobs({ kind: 'download', active: true }));
-    } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Active jobs unavailable',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  };
-
-  const loadHistory = async (nextPage = page) => {
-    try {
-      setError(null);
-      setHistory(await api.downloads({ page: nextPage, page_size: 15 }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download history failed to load');
-    }
-  };
-
-  useEffect(() => {
-    loadHistory(page);
-  }, [page]);
+function DownloadDrawerBody({
+  download,
+  onOpenRecord,
+  onResumed,
+}: {
+  download: DownloadDetail;
+  onOpenRecord: (id: number) => void;
+  onResumed: () => void;
+}) {
+  const [items, setItems] = useState<DownloadItemDetail[] | null>(null);
+  const [log, setLog] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    const poll = async () => {
-      try {
-        const jobs = await api.jobs({ kind: 'download', active: true });
-        if (!cancelled) setActiveJobs(jobs);
-      } catch {
-        // The manual refresh button reports errors; polling stays quiet.
-      }
-      if (!cancelled) window.setTimeout(poll, 1500);
-    };
-    poll();
+    setItems(null);
+    setLog(null);
+    setError(null);
+    api
+      .downloadItems(download.id)
+      .then((next) => !cancelled && setItems(next))
+      .catch((err) => !cancelled && setError(errorMessage(err)));
+    if (download.log_path) {
+      api
+        .downloadLog(download.id)
+        .then((next) => !cancelled && setLog(next.text))
+        .catch((err) => !cancelled && setLog(`Log unavailable: ${errorMessage(err)}`));
+    }
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [download.id, download.log_path]);
 
-  const openDownload = async (downloadId: number) => {
-    if (selectedDownloadId === downloadId) {
-      setSelectedDownloadId(null);
-      setItems([]);
-      setDownloadLog(null);
-      return;
-    }
-    setSelectedDownloadId(downloadId);
-    setDownloadLog(null);
+  const resume = async () => {
+    setResuming(true);
     try {
-      const nextItems = await api.downloadItems(downloadId);
-      setItems(nextItems);
-      const download = history?.items.find((item) => item.id === downloadId);
-      if (download?.log_path) {
-        const log = await api.downloadLog(downloadId);
-        setDownloadLog(log.text);
-      }
+      const created = await api.resumeDownload(download.id);
+      notifySuccess('Resume queued', `Job ${created.job_id.slice(0, 8)}`);
+      onResumed();
     } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Download detail unavailable',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
-    }
-  };
-
-  const refreshAll = () => {
-    loadActiveJobs();
-    loadHistory();
-  };
-
-  const resumeDownload = async (downloadId: number) => {
-    setResumingId(downloadId);
-    try {
-      const created = await api.resumeDownload(downloadId);
-      notifications.show({
-        color: 'teal',
-        title: 'Resume queued',
-        message: `Job ${created.job_id}`,
-      });
-      await loadActiveJobs();
-      await loadHistory();
-    } catch (err) {
-      notifications.show({
-        color: 'red',
-        title: 'Resume unavailable',
-        message: err instanceof Error ? err.message : 'Unknown error',
-      });
+      notifyError('Resume unavailable', err);
     } finally {
-      setResumingId(null);
+      setResuming(false);
     }
   };
+
+  const resumable = RESUMABLE_STATUSES.has(download.status) && Boolean(download.request_json);
 
   return (
-    <Stack gap="md">
-      <Group justify="space-between" align="end">
-        <div>
-          <Title order={2}>Downloads</Title>
-          <Text size="sm" c="dimmed">
-            Active download jobs and recorded MEGAcmd history
-          </Text>
-        </div>
-        <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={refreshAll}>
-          Refresh
+    <Stack gap="lg">
+      <Group gap="xs">
+        <Button
+          variant="default"
+          leftSection={<IconExternalLink size={16} />}
+          onClick={() => onOpenRecord(download.record_group_id)}
+        >
+          Open record
+        </Button>
+        <Button leftSection={<IconPlayerPlay size={16} />} disabled={!resumable} loading={resuming} onClick={resume}>
+          Resume
         </Button>
       </Group>
 
-      <Stack p="md" className="section" gap="md">
-        <Group justify="space-between">
-          <Title order={3} size="h4">
-            Active Jobs
-          </Title>
-          <Text size="sm" c="dimmed">
-            {activeJobs.length} running or queued
-          </Text>
-        </Group>
-        {activeJobs.length === 0 ? (
-          <EmptyState message="No active download jobs." />
-        ) : (
-          <SimpleGrid cols={{ base: 1, lg: 2 }}>
-            {activeJobs.map((job) => (
-              <Stack key={job.id} p="sm" className="section" gap="xs">
-                <Group justify="space-between">
-                  <Text fw={700}>{jobTarget(job)}</Text>
-                  <PlainStatusBadge value={job.status} />
-                </Group>
-                <Text size="xs" c="dimmed">
-                  Job {job.id}
-                </Text>
-                <SimpleGrid cols={2}>
-                  <Text size="sm">Output: {formatText(String(job.options.output ?? 'default'))}</Text>
-                  <Text size="sm">Types: {formatText(String(job.options.types ?? 'all'))}</Text>
-                </SimpleGrid>
-                <Textarea
-                  autosize
-                  minRows={3}
-                  maxRows={8}
-                  readOnly
-                  className="log-output"
-                  value={outputText(job) || 'Waiting for MEGAcmd output...'}
-                />
-              </Stack>
-            ))}
-          </SimpleGrid>
-        )}
-      </Stack>
+      {download.message ? (
+        <Text size="sm" c={download.status === 'failed' ? 'red' : undefined}>
+          {download.message}
+        </Text>
+      ) : null}
 
-      <Stack p="md" className="section" gap="md">
-        <Group justify="space-between">
-          <Title order={3} size="h4">
-            Download History
-          </Title>
-          {history && (
-            <Text size="sm" c="dimmed">
-              {history.total} downloads
-            </Text>
-          )}
-        </Group>
-        {error && (
-          <Alert color="red" icon={<IconAlertCircle size={18} />}>
-            {error}
-          </Alert>
-        )}
-        {!history ? (
-          <Text size="sm" c="dimmed">
-            Loading history...
-          </Text>
-        ) : history.items.length === 0 ? (
-          <EmptyState message="No downloads recorded yet." />
-        ) : (
-          <>
-            <div className="table-scroll">
-              <Table striped highlightOnHover withTableBorder verticalSpacing={6} fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>ID</Table.Th>
-                    <Table.Th>Record</Table.Th>
-                    <Table.Th>Actor</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Files</Table.Th>
-                    <Table.Th>Size</Table.Th>
-                    <Table.Th>Output</Table.Th>
-                    <Table.Th>Requested</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {history.items.map((item) => (
-                    <Table.Tr
-                      key={item.id}
-                      className="click-row"
-                      data-selected={selectedDownloadId === item.id}
-                      onClick={() => openDownload(item.id)}
-                    >
-                      <Table.Td>{item.id}</Table.Td>
-                      <Table.Td className="truncate-cell" title={item.record_title}>
-                        #{item.record_group_id} {item.record_title}
-                      </Table.Td>
-                      <Table.Td className="truncate-cell">{item.actor}</Table.Td>
-                      <Table.Td>
-                        <PlainStatusBadge value={item.status} />
-                      </Table.Td>
-                      <Table.Td>
-                        {item.completed_count}/{item.item_count}
-                      </Table.Td>
-                      <Table.Td className="nowrap">{formatBytes(item.selected_bytes)}</Table.Td>
-                      <Table.Td className="truncate-cell" title={item.output_dir}>
-                        {item.output_dir || '-'}
-                      </Table.Td>
-                      <Table.Td className="nowrap">{item.requested_at}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </div>
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">
-                Page {history.page} of {Math.max(1, history.total_pages)}
-              </Text>
-              <Pagination value={page} onChange={setPage} total={Math.max(1, history.total_pages)} />
-            </Group>
-          </>
-        )}
-      </Stack>
+      <KeyValue
+        items={[
+          { label: 'Record', value: `#${download.record_group_id} ${download.record_title}`, full: true },
+          { label: 'Actor', value: formatText(download.actor) },
+          { label: 'Platform', value: formatText(download.source) },
+          { label: 'Requested', value: formatDateTime(download.requested_at) },
+          { label: 'Files', value: <LinkProgress completed={download.completed_count} total={download.item_count} /> },
+          { label: 'Selected size', value: formatBytes(download.selected_bytes) },
+          { label: 'Free before', value: formatBytes(download.free_bytes_before) },
+          { label: 'Failures', value: download.failed_count },
+          { label: 'Exit code', value: formatText(download.mega_exit_code) },
+          { label: 'Output', value: formatText(download.output_dir), mono: true, full: true },
+        ]}
+      />
 
-      {selectedDownload && (
-        <Stack p="md" className="section" gap="md">
-          <Group justify="space-between" align="end">
-            <div>
-              <Title order={3} size="h4">
-                Download #{selectedDownload.id}
-              </Title>
-              <Text size="sm" c="dimmed">
-                {selectedDownload.message || selectedDownload.output_dir || 'No message recorded.'}
-              </Text>
-            </div>
-            <Button
-              component="a"
-              href={`#/records/${selectedDownload.record_group_id}`}
-              variant="light"
-              leftSection={<IconExternalLink size={16} />}
-            >
-              Open record
-            </Button>
-            <Button
-              leftSection={<IconPlayerPlay size={16} />}
-              disabled={!RESUMABLE_STATUSES.has(selectedDownload.status) || !selectedDownload.request_json}
-              loading={resumingId === selectedDownload.id}
-              onClick={() => resumeDownload(selectedDownload.id)}
-            >
-              Resume
-            </Button>
-          </Group>
-          <SimpleGrid cols={{ base: 2, md: 4 }}>
-            <Text size="sm">Source: {selectedDownload.source}</Text>
-            <Text size="sm">Exit code: {formatText(String(selectedDownload.mega_exit_code ?? ''))}</Text>
-            <Text size="sm">Free before: {formatBytes(selectedDownload.free_bytes_before)}</Text>
-            <Text size="sm">Failures: {selectedDownload.failed_count}</Text>
-          </SimpleGrid>
-          {selectedDownload.request_json && (
-            <Textarea
-              label="Request"
-              autosize
-              minRows={2}
-              maxRows={6}
-              readOnly
-              className="log-output"
-              value={selectedDownload.request_json}
-            />
-          )}
-          {selectedDownload.log_path && (
-            <Textarea
-              label="MEGAcmd output log"
-              autosize
-              minRows={5}
-              maxRows={14}
-              readOnly
-              className="log-output"
-              value={downloadLog ?? 'Loading MEGAcmd output log...'}
-            />
-          )}
-          {items.length === 0 ? (
-            <EmptyState message="No download items recorded for this entry." />
-          ) : (
-            <div className="table-scroll">
-              <Table striped withTableBorder verticalSpacing={6} fz="sm">
+      <Stack gap={8}>
+        <Text fw={650} size="sm">
+          Files
+        </Text>
+        {error ? (
+          <ErrorBlock message={error} />
+        ) : !items ? (
+          <LoadingBlock />
+        ) : items.length === 0 ? (
+          <Text size="sm" c="dimmed">
+            No file items were recorded for this download.
+          </Text>
+        ) : (
+          <div className="rt-panel">
+            <TableWrap>
+              <Table fz="xs">
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>#</Table.Th>
                     <Table.Th>Type</Table.Th>
-                    <Table.Th>Size</Table.Th>
+                    <Table.Th style={{ textAlign: 'right' }}>Size</Table.Th>
                     <Table.Th>Status</Table.Th>
                     <Table.Th>Exit</Table.Th>
-                    <Table.Th>URL</Table.Th>
-                    <Table.Th>Message</Table.Th>
+                    <Table.Th>URL / message</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {items.map((item) => (
                     <Table.Tr key={item.id}>
-                      <Table.Td>{item.link_order}</Table.Td>
+                      <Table.Td className="rt-id">{item.link_order}</Table.Td>
                       <Table.Td>{formatText(item.file_type)}</Table.Td>
-                      <Table.Td className="nowrap">{item.formatted_size || formatBytes(item.size_bytes)}</Table.Td>
+                      <Table.Td className="rt-num">{item.formatted_size || formatBytes(item.size_bytes)}</Table.Td>
                       <Table.Td>
-                        <PlainStatusBadge value={item.status} />
+                        <StatusBadge value={item.status} />
                       </Table.Td>
-                      <Table.Td>{formatText(String(item.mega_exit_code ?? ''))}</Table.Td>
-                      <Table.Td className="url-cell" title={item.mega_url}>
-                        {previewUrl(item.mega_url)}
+                      <Table.Td className="rt-mono">{formatText(item.mega_exit_code)}</Table.Td>
+                      <Table.Td>
+                        <div className="rt-mono rt-nowrap" title={item.mega_url}>
+                          {previewUrl(item.mega_url, 20)}
+                        </div>
+                        {item.message ? (
+                          <Text size="xs" c="dimmed" className="rt-wrap">
+                            {item.message}
+                          </Text>
+                        ) : null}
                       </Table.Td>
-                      <Table.Td className="url-cell">{formatText(item.message)}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
               </Table>
-            </div>
-          )}
+            </TableWrap>
+          </div>
+        )}
+      </Stack>
+
+      {download.log_path ? (
+        <Stack gap={8}>
+          <Text fw={650} size="sm">
+            MEGAcmd output
+          </Text>
+          <LogViewer text={log} placeholder="Loading log…" maxHeight={360} />
         </Stack>
-      )}
+      ) : null}
+
+      {download.request_json ? (
+        <Stack gap={8}>
+          <Text fw={650} size="sm">
+            Request
+          </Text>
+          <LogViewer text={download.request_json} maxHeight={160} minHeight={40} />
+        </Stack>
+      ) : null}
     </Stack>
+  );
+}
+
+export default function Downloads({ onOpenRecord }: { onOpenRecord: (id: number | string) => void }) {
+  const { downloads: activeJobs, finishedTick, refresh: refreshJobs } = useActiveJobs();
+  const [history, setHistory] = useCachedState<DownloadPage | null>('downloads.history', null);
+  const [page, setPage] = useCachedState('downloads.page', 1);
+  const [statusFilter, setStatusFilter] = useCachedState('downloads.status', 'any');
+  const [selectedId, setSelectedId] = useCachedState<number | null>('downloads.selectedId', null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadHistory = async (nextPage = page, status = statusFilter) => {
+    setLoading(true);
+    setError(null);
+    try {
+      setHistory(
+        await api.downloads({ page: nextPage, page_size: PAGE_SIZE, status: status === 'any' ? undefined : status }),
+      );
+    } catch (err) {
+      setError(errorMessage(err, 'Download history failed to load'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadHistory(page);
+    // Reload on page change and whenever a background job finishes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, finishedTick]);
+
+  const selected = history?.items.find((item) => item.id === selectedId) ?? null;
+
+  return (
+    <Page>
+      <PageHeader
+        eyebrow="Transfers"
+        title="Downloads"
+        description="Live MEGAcmd jobs and the recorded download history."
+        actions={
+          <Button
+            variant="default"
+            leftSection={<IconRefresh size={16} />}
+            loading={loading}
+            onClick={() => {
+              void refreshJobs();
+              void loadHistory();
+            }}
+          >
+            Refresh
+          </Button>
+        }
+      />
+
+      <Panel
+        title={
+          <Group gap={8}>
+            <span>Active jobs</span>
+            <Badge color={activeJobs.length ? 'brand' : 'gray'} size="sm">
+              {activeJobs.length}
+            </Badge>
+          </Group>
+        }
+        description="Output streams in while jobs run; finished jobs move to the history below."
+      >
+        {activeJobs.length === 0 ? (
+          <EmptyState
+            compact
+            icon={<IconDownload size={20} />}
+            message="Nothing is downloading. Open a record to plan a download, or queue a batch from an actor."
+          />
+        ) : (
+          <div className="rt-grid rt-grid-2">
+            {activeJobs.map((job) => (
+              <ActiveJobCard key={job.id} job={job} onOpenRecord={onOpenRecord} />
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title={
+          <Group gap={8}>
+            <span>History</span>
+            {history ? (
+              <Text span size="sm" c="dimmed" fw={500}>
+                {formatNumber(history.total)}
+              </Text>
+            ) : null}
+            {loading ? <Loader size={14} /> : null}
+          </Group>
+        }
+        actions={
+          <div className="rt-scroll-x">
+            <SegmentedControl
+              size="xs"
+              value={statusFilter}
+              data={STATUS_FILTERS}
+              onChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+                void loadHistory(1, value);
+              }}
+            />
+          </div>
+        }
+        flush
+        footer={
+          history && history.total > 0 ? (
+            <div style={{ width: '100%' }}>
+              <Pager
+                page={page}
+                pageSize={PAGE_SIZE}
+                total={history.total}
+                totalPages={history.total_pages}
+                noun="downloads"
+                onPageChange={setPage}
+              />
+            </div>
+          ) : null
+        }
+      >
+        {error ? (
+          <div style={{ padding: 16 }}>
+            <ErrorBlock message={error} onRetry={() => void loadHistory()} />
+          </div>
+        ) : !history ? (
+          <LoadingBlock />
+        ) : history.items.length === 0 ? (
+          <EmptyState compact message={statusFilter === 'any' ? 'No downloads recorded yet.' : 'No downloads with this status.'} />
+        ) : (
+          <TableWrap>
+            <Table>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>ID</Table.Th>
+                  <Table.Th>Record</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Files</Table.Th>
+                  <Table.Th style={{ textAlign: 'right' }}>Size</Table.Th>
+                  <Table.Th>Requested</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {history.items.map((item) => (
+                  <Table.Tr
+                    key={item.id}
+                    data-clickable="true"
+                    data-selected={selectedId === item.id || undefined}
+                    tabIndex={0}
+                    onClick={() => setSelectedId(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') setSelectedId(item.id);
+                    }}
+                  >
+                    <Table.Td className="rt-id">{item.id}</Table.Td>
+                    <Table.Td className="rt-cell-title">
+                      <span className="rt-record-title rt-truncate" title={item.record_title}>
+                        {item.record_title || `Record #${item.record_group_id}`}
+                      </span>
+                      <span className="rt-record-sub rt-truncate">
+                        #{item.record_group_id}
+                        {item.actor ? ` · ${item.actor}` : ''}
+                      </span>
+                    </Table.Td>
+                    <Table.Td>
+                      <StatusBadge value={item.status} />
+                    </Table.Td>
+                    <Table.Td>
+                      <LinkProgress completed={item.completed_count} total={item.item_count} />
+                    </Table.Td>
+                    <Table.Td className="rt-num">{formatBytes(item.selected_bytes)}</Table.Td>
+                    <Table.Td className="rt-nowrap" title={formatDateTime(item.requested_at)}>
+                      {formatRelative(item.requested_at)}
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </TableWrap>
+        )}
+      </Panel>
+
+      <Drawer
+        opened={selected !== null}
+        onClose={() => setSelectedId(null)}
+        size="xl"
+        title={
+          selected ? (
+            <Group gap="sm">
+              <Text fw={650}>Download #{selected.id}</Text>
+              <StatusBadge value={selected.status} />
+            </Group>
+          ) : null
+        }
+      >
+        {selected ? (
+          <DownloadDrawerBody
+            download={selected}
+            onOpenRecord={(id) => {
+              setSelectedId(null);
+              onOpenRecord(id);
+            }}
+            onResumed={() => {
+              void refreshJobs();
+              void loadHistory();
+            }}
+          />
+        ) : null}
+      </Drawer>
+    </Page>
   );
 }

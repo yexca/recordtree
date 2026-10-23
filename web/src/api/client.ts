@@ -27,11 +27,7 @@ import type {
   StatsResult,
 } from './types';
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    ...options,
-  });
+async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let message = `Request failed with ${response.status}`;
     try {
@@ -43,6 +39,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(message);
   }
   return (await response.json()) as T;
+}
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    ...options,
+  });
+  return readJson<T>(response);
 }
 
 const params = (values: Record<string, string | number | boolean | null | undefined>) => {
@@ -160,6 +164,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  createActorDownload: (body: {
+    actor_id: number;
+    count: number;
+    include_par2: boolean;
+    types: string | null;
+    output?: string | null;
+  }) =>
+    request<JobCreateResponse>('/api/downloads/actor', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   downloads: (query: { status?: string; record_id?: number; page: number; page_size: number }) =>
     request<DownloadPage>(`/api/downloads${params(query)}`),
   download: (downloadId: number) => request<DownloadDetail>(`/api/downloads/${downloadId}`),
@@ -174,21 +189,7 @@ export const api = {
   createImport: async (file: File) => {
     const body = new FormData();
     body.append('file', file);
-    const response = await fetch('/api/imports', {
-      method: 'POST',
-      body,
-    });
-    if (!response.ok) {
-      let message = `Request failed with ${response.status}`;
-      try {
-        const payload = (await response.json()) as ApiError;
-        message = payload.detail || payload.error || message;
-      } catch {
-        // Keep the HTTP fallback when the server did not return JSON.
-      }
-      throw new Error(message);
-    }
-    return (await response.json()) as JobCreateResponse;
+    return readJson<JobCreateResponse>(await fetch('/api/imports', { method: 'POST', body }));
   },
   imports: (query: { status?: string; source_type?: string; page: number; page_size: number }) =>
     request<ImportPage>(`/api/imports${params(query)}`),
