@@ -4,7 +4,7 @@ Use this container when you want one Linux environment with both Python developm
 
 ## What It Includes
 
-- Node 20 and npm dependencies from `web/package-lock.json`
+- Node 24 and npm dependencies from `web/package-lock.json`
 - Python dev and WebUI dependencies from `pyproject.toml`
 - The official Debian 12 MEGAcmd package
 - A source bind mount so local edits are visible inside the container
