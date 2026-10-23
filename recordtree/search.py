@@ -36,6 +36,14 @@ RECORD_SORTS = {
     "title_asc": "rg.title COLLATE NOCASE ASC, rg.id ASC",
     "title_desc": "rg.title COLLATE NOCASE DESC, rg.id DESC",
 }
+ACTOR_SORTS = {
+    "name_asc": "a.name COLLATE NOCASE ASC, a.id ASC",
+    "name_desc": "a.name COLLATE NOCASE DESC, a.id DESC",
+    "records_desc": "record_count DESC, a.name COLLATE NOCASE ASC, a.id ASC",
+    "records_asc": "record_count ASC, a.name COLLATE NOCASE ASC, a.id ASC",
+    "id_desc": "a.id DESC",
+    "id_asc": "a.id ASC",
+}
 MAX_LIMIT = 500
 
 
@@ -46,7 +54,7 @@ class SearchService:
     def search_actor(self, name: str, limit: int = DEFAULT_LIMIT) -> list[ActorSummary]:
         normalized_limit = normalize_limit(limit)
         rows = self.conn.execute(
-            """
+            f"""
             SELECT
                 a.id,
                 a.name,
@@ -65,7 +73,8 @@ class SearchService:
                           )
                     )
                     THEN rg.id
-                END) AS undownloaded_count
+                END) AS undownloaded_count,
+                {_actor_favorite_sql()} AS is_favorite
             FROM actors a
             JOIN record_group_actors rga ON rga.actor_id = a.id
             JOIN record_groups rg ON rg.id = rga.record_group_id
@@ -77,58 +86,66 @@ class SearchService:
             """,
             (f"%{normalize_search_text(name)}%", normalized_limit),
         ).fetchall()
-        return [
-            ActorSummary(
-                id=int(row["id"]),
-                name=row["name"],
-                record_count=int(row["record_count"]),
-                undownloaded_count=int(row["undownloaded_count"]),
-            )
-            for row in rows
-        ]
+        return [_actor_from_row(row) for row in rows]
 
-    def list_actor_page(self, name: str, page: int = 1, page_size: int = DEFAULT_LIMIT) -> ActorPage:
+    def list_actor_page(
+        self,
+        name: str,
+        page: int = 1,
+        page_size: int = DEFAULT_LIMIT,
+        *,
+        sort: str = "name_asc",
+        favorites_only: bool = False,
+        favorites_first: bool = False,
+    ) -> ActorPage:
+        """Pages actors by name; favorites can be filtered to or pinned ahead of the chosen sort."""
         normalized_page = normalize_page(page)
         normalized_page_size = normalize_limit(page_size)
+        order_sql = ACTOR_SORTS.get(sort)
+        if order_sql is None:
+            raise ValidationError(f"Sort must be one of: {', '.join(ACTOR_SORTS)}.")
+        if favorites_first and not favorites_only:
+            order_sql = f"is_favorite DESC, {order_sql}"
         text = f"%{normalize_search_text(name)}%"
-        total = int(
-            self.conn.execute(
-                "SELECT COUNT(*) FROM actors WHERE name_normalized LIKE ?",
-                (text,),
-            ).fetchone()[0]
-        )
+        counts = self.conn.execute(
+            f"""
+            SELECT COUNT(*) AS total, COALESCE(SUM({_actor_favorite_sql()}), 0) AS favorites
+            FROM actors a
+            WHERE a.name_normalized LIKE ?
+            """,
+            (text,),
+        ).fetchone()
+        favorite_total = int(counts["favorites"])
+        total = favorite_total if favorites_only else int(counts["total"])
+        favorites_clause = f"AND {_actor_favorite_sql()} = 1" if favorites_only else ""
         offset = (normalized_page - 1) * normalized_page_size
         rows = self.conn.execute(
-            """
+            f"""
             SELECT
                 a.id,
                 a.name,
-                COUNT(rg.id) AS record_count
+                COUNT(rg.id) AS record_count,
+                0 AS undownloaded_count,
+                {_actor_favorite_sql()} AS is_favorite
             FROM actors a
             LEFT JOIN record_group_actors rga ON rga.actor_id = a.id
             LEFT JOIN record_groups rg ON rg.id = rga.record_group_id AND rg.is_deleted = 0
             WHERE a.name_normalized LIKE ?
+              {favorites_clause}
             GROUP BY a.id, a.name
-            ORDER BY a.name COLLATE NOCASE, a.id
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?
             """,
             (text, normalized_page_size, offset),
         ).fetchall()
         total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
         return ActorPage(
-            items=[
-                ActorSummary(
-                    id=int(row["id"]),
-                    name=row["name"],
-                    record_count=int(row["record_count"]),
-                    undownloaded_count=0,
-                )
-                for row in rows
-            ],
+            items=[_actor_from_row(row) for row in rows],
             page=normalized_page,
             page_size=normalized_page_size,
             total=total,
             total_pages=total_pages,
+            favorite_total=favorite_total,
         )
 
     def actor_undownloaded_counts(self, actor_ids: list[int]) -> dict[int, int]:
@@ -155,8 +172,9 @@ class SearchService:
     def get_actor(self, actor_id: int) -> ActorSummary:
         if actor_id < 1:
             raise ValidationError("Actor id must be at least 1.")
+        # Left joins keep actors whose records were all removed reachable from the favorites list.
         row = self.conn.execute(
-            """
+            f"""
             SELECT
                 a.id,
                 a.name,
@@ -175,27 +193,22 @@ class SearchService:
                           )
                     )
                     THEN rg.id
-                END) AS undownloaded_count
+                END) AS undownloaded_count,
+                {_actor_favorite_sql()} AS is_favorite
             FROM actors a
-            JOIN record_group_actors rga ON rga.actor_id = a.id
-            JOIN record_groups rg ON rg.id = rga.record_group_id
-            WHERE rg.is_deleted = 0
-              AND a.id = ?
+            LEFT JOIN record_group_actors rga ON rga.actor_id = a.id
+            LEFT JOIN record_groups rg ON rg.id = rga.record_group_id AND rg.is_deleted = 0
+            WHERE a.id = ?
             GROUP BY a.id, a.name
             """,
             (actor_id,),
         ).fetchone()
         if row is None:
             raise NotFoundError(f"Actor not found: {actor_id}")
-        return ActorSummary(
-            id=int(row["id"]),
-            name=row["name"],
-            record_count=int(row["record_count"]),
-            undownloaded_count=int(row["undownloaded_count"]),
-        )
+        return _actor_from_row(row)
 
     def list_actor_records(self, actor_id: int, limit: int = DEFAULT_LIMIT) -> list[RecordSummary]:
-        self._require_actor(actor_id)
+        self.require_actor(actor_id)
         return self._list_records(
             """
             WHERE rg.is_deleted = 0
@@ -383,6 +396,7 @@ class SearchService:
         record_id: int | None = None,
         title: str = "",
         actor: str = "",
+        actor_id: int | None = None,
         source: str = "",
         date_from: str | None = None,
         date_to: str | None = None,
@@ -402,6 +416,7 @@ class SearchService:
             record_id=record_id,
             title=title,
             actor=actor,
+            actor_id=actor_id,
             source=source,
             date_from=date_from,
             date_to=date_to,
@@ -426,6 +441,7 @@ class SearchService:
         *,
         record_id: int | None = None,
         title: str = "",
+        actor_id: int | None = None,
         actor: str = "",
         source: str = "",
         date_from: str | None = None,
@@ -437,6 +453,7 @@ class SearchService:
             record_id=record_id,
             title=title,
             actor=actor,
+            actor_id=actor_id,
             source=source,
             date_from=date_from,
             date_to=date_to,
@@ -559,7 +576,7 @@ class SearchService:
             )
             params.append(f"%{normalize_search_text(actor)}%")
         if actor_id is not None:
-            self._require_actor(actor_id)
+            self.require_actor(actor_id)
             clauses.append(
                 """
                 EXISTS (
@@ -898,6 +915,7 @@ class SearchService:
         record_id: int | None,
         title: str,
         actor: str,
+        actor_id: int | None = None,
         source: str,
         date_from: str | None,
         date_to: str | None,
@@ -936,6 +954,20 @@ class SearchService:
                 """
             )
             params.extend([text, text, text])
+        if actor_id is not None:
+            if actor_id < 1:
+                raise ValidationError("Actor id must be at least 1.")
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM record_group_actors rga
+                    WHERE rga.record_group_id = rg.id
+                      AND rga.actor_id = ?
+                )
+                """
+            )
+            params.append(actor_id)
         if actor:
             clauses.append(
                 """
@@ -1015,7 +1047,7 @@ class SearchService:
             "completed_count": int(row["completed_count"]),
         }
 
-    def _require_actor(self, actor_id: int) -> None:
+    def require_actor(self, actor_id: int) -> None:
         if actor_id < 1:
             raise ValidationError("Actor id must be at least 1.")
         row = self.conn.execute("SELECT 1 FROM actors WHERE id = ?", (actor_id,)).fetchone()
@@ -1073,6 +1105,20 @@ def preview_url(url: str, edge: int = 24) -> str:
     if len(url) <= edge * 2 + 3:
         return url
     return f"{url[:edge]}...{url[-edge:]}"
+
+
+def _actor_favorite_sql() -> str:
+    return "EXISTS (SELECT 1 FROM actor_favorites af WHERE af.actor_id = a.id)"
+
+
+def _actor_from_row(row: sqlite3.Row) -> ActorSummary:
+    return ActorSummary(
+        id=int(row["id"]),
+        name=row["name"],
+        record_count=int(row["record_count"]),
+        undownloaded_count=int(row["undownloaded_count"]),
+        is_favorite=bool(row["is_favorite"]),
+    )
 
 
 def _summary_columns_sql() -> str:

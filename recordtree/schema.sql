@@ -44,6 +44,12 @@ CREATE TABLE IF NOT EXISTS record_group_actors (
     FOREIGN KEY (actor_id) REFERENCES actors(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS actor_favorites (
+    actor_id INTEGER PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (actor_id) REFERENCES actors(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,

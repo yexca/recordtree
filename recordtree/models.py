@@ -82,6 +82,7 @@ class ActorSummary:
     name: str
     record_count: int
     undownloaded_count: int
+    is_favorite: bool = False
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,8 @@ class ActorPage:
     page_size: int
     total: int
     total_pages: int
+    # Favorites matching the name filter, shown on the favorites toggle.
+    favorite_total: int = 0
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,7 @@ export type RouteName =
   | 'records'
   | 'record'
   | 'actors'
+  | 'actor'
   | 'platforms'
   | 'import'
   | 'downloads'
@@ -24,6 +25,7 @@ export type RouteName =
 export interface Route {
   name: RouteName;
   recordId?: string;
+  actorId?: number;
   section?: string;
   /** Raw query string after `?`, used for page state such as record filters. */
   query: string;
@@ -45,8 +47,10 @@ function parsePath(path: string): Omit<Route, 'query'> {
       return second ? { name: 'record', recordId: second } : { name: 'records' };
     case 'search':
       return second === 'records' && third ? { name: 'record', recordId: third } : { name: 'records' };
-    case 'actors':
-      return { name: 'actors' };
+    case 'actors': {
+      const actorId = Number(second);
+      return second && Number.isInteger(actorId) && actorId > 0 ? { name: 'actor', actorId } : { name: 'actors' };
+    }
     case 'platforms':
     case 'platform':
       return { name: 'platforms' };
@@ -65,6 +69,7 @@ function parsePath(path: string): Omit<Route, 'query'> {
 }
 
 export const recordHref = (id: number | string) => `/records/${encodeURIComponent(String(id))}`;
+export const actorHref = (id: number) => `/actors/${id}`;
 
 export interface NavItem {
   route: RouteName;
@@ -90,7 +95,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Library',
     items: [
       { route: 'records', href: '/records', label: 'Records', icon: IconListSearch, alsoActive: ['record'] },
-      { route: 'actors', href: '/actors', label: 'Actors', icon: IconUsers },
+      { route: 'actors', href: '/actors', label: 'Actors', icon: IconUsers, alsoActive: ['actor'] },
       { route: 'platforms', href: '/platforms', label: 'Platforms', icon: IconBuildingBroadcastTower },
     ],
   },

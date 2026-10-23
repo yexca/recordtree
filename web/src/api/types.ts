@@ -246,7 +246,10 @@ export interface ActorSummary {
   name: string;
   record_count: number;
   undownloaded_count: number;
+  is_favorite: boolean;
 }
+
+export type ActorSort = 'name_asc' | 'name_desc' | 'records_desc' | 'records_asc' | 'id_desc' | 'id_asc';
 
 export interface PlatformSummary {
   id: number;
@@ -261,6 +264,8 @@ export interface ActorPage {
   page_size: number;
   total: number;
   total_pages: number;
+  /** Favorites matching the name filter. */
+  favorite_total: number;
 }
 
 export interface PlatformPage {

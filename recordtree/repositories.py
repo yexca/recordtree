@@ -347,6 +347,18 @@ class ActorRepository:
             (group_id, actor_id),
         )
 
+    def set_favorite(self, actor_id: int, favorite: bool) -> None:
+        if favorite:
+            self.conn.execute(
+                f"""
+                INSERT OR IGNORE INTO actor_favorites (actor_id, created_at)
+                VALUES (?, {utc_now_sql()})
+                """,
+                (actor_id,),
+            )
+        else:
+            self.conn.execute("DELETE FROM actor_favorites WHERE actor_id = ?", (actor_id,))
+
 
 class SourceRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:

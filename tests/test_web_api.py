@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 import time
@@ -124,6 +124,58 @@ async def test_web_lifespan_initializes_database(tmp_path: Path, monkeypatch: py
         assert (tmp_path / "config" / "recordtree.sqlite3").exists()
 
 
+async def test_actor_favorites_filter_and_pin_actor_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup_record(tmp_path, monkeypatch)
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        import_id = ImportRepository(conn).create_import("xlsx", tmp_path / "fixture.xlsx")
+        for index, name in enumerate(["Alpha Actor", "Zeta Actor"], start=1):
+            ImportService(conn).upsert_record(
+                import_id,
+                replace(
+                    _record(),
+                    actor_raw=name,
+                    title=f"Other title {index}",
+                    links=[LinkItem(1, f"https://example.invalid/other/{index}", ".mp4", 100, "100 B")],
+                ),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    async with _test_client() as client:
+        page = (await client.get("/api/actors/page")).json()
+        names = [item["name"] for item in page["items"]]
+        assert names == ["Alpha Actor", "API Actor", "Zeta Actor"]
+        assert page["favorite_total"] == 0
+        zeta_id = page["items"][2]["id"]
+
+        liked = (await client.put(f"/api/actors/{zeta_id}/favorite")).json()
+        assert liked["is_favorite"] is True
+        assert (await client.put(f"/api/actors/{zeta_id}/favorite")).status_code == 200
+
+        pinned = (await client.get("/api/actors/page", params={"favorites_first": True})).json()
+        assert [item["name"] for item in pinned["items"]] == ["Zeta Actor", "Alpha Actor", "API Actor"]
+        assert pinned["favorite_total"] == 1
+
+        only = (await client.get("/api/actors/page", params={"favorites_only": True})).json()
+        assert only["total"] == 1
+        assert [item["name"] for item in only["items"]] == ["Zeta Actor"]
+
+        by_name_desc = (await client.get("/api/actors/page", params={"sort": "name_desc"})).json()
+        assert [item["name"] for item in by_name_desc["items"]] == ["Zeta Actor", "API Actor", "Alpha Actor"]
+        assert (await client.get("/api/actors/page", params={"sort": "bogus"})).status_code == 400
+
+        assert (await client.get(f"/api/actors/{zeta_id}")).json()["is_favorite"] is True
+        unliked = (await client.delete(f"/api/actors/{zeta_id}/favorite")).json()
+        assert unliked["is_favorite"] is False
+        assert (await client.get("/api/actors/page", params={"favorites_only": True})).json()["total"] == 0
+        assert (await client.put("/api/actors/9999/favorite")).status_code == 404
+
+
 async def test_search_detail_stats_and_download_plan_endpoints(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -152,6 +204,11 @@ async def test_search_detail_stats_and_download_plan_endpoints(
 
         actor_records = (await client.get(f"/api/actors/{actors[0]['id']}/records")).json()
         assert actor_records[0]["id"] == group_id
+
+        actor_record_page = (await client.get("/api/records", params={"actor_id": actors[0]["id"]})).json()
+        assert [item["id"] for item in actor_record_page["items"]] == [group_id]
+        actor_status_counts = (await client.get("/api/records/status-counts", params={"actor_id": actors[0]["id"]})).json()
+        assert actor_status_counts["total"] == 1
 
         platforms = (await client.get("/api/platforms", params={"query": "nico"})).json()
         assert platforms[0]["name"] == "niconico"

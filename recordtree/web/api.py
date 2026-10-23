@@ -281,8 +281,24 @@ def actors(query: str = "", limit: int = 50) -> list[dict[str, object]]:
 
 
 @app.get("/api/actors/page")
-def actor_page(query: str = "", page: int = 1, page_size: int = 50) -> dict[str, object]:
-    return _serialize(RecordTreeApp().list_actor_page(query, page=page, page_size=page_size))
+def actor_page(
+    query: str = "",
+    page: int = 1,
+    page_size: int = 50,
+    sort: str = "name_asc",
+    favorites_only: bool = False,
+    favorites_first: bool = False,
+) -> dict[str, object]:
+    return _serialize(
+        RecordTreeApp().list_actor_page(
+            query,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            favorites_only=favorites_only,
+            favorites_first=favorites_first,
+        )
+    )
 
 
 @app.get("/api/actors/undownloaded-counts")
@@ -293,6 +309,16 @@ def actor_undownloaded_counts(ids: str = "") -> dict[str, int]:
 @app.get("/api/actors/{actor_id}")
 def actor(actor_id: int) -> dict[str, object]:
     return _serialize(RecordTreeApp().get_actor(actor_id))
+
+
+@app.put("/api/actors/{actor_id}/favorite")
+def favorite_actor(actor_id: int) -> dict[str, object]:
+    return _serialize(RecordTreeApp().set_actor_favorite(actor_id, True))
+
+
+@app.delete("/api/actors/{actor_id}/favorite")
+def unfavorite_actor(actor_id: int) -> dict[str, object]:
+    return _serialize(RecordTreeApp().set_actor_favorite(actor_id, False))
 
 
 @app.get("/api/actors/{actor_id}/records")
@@ -330,6 +356,7 @@ def records(
     record_id: int | None = None,
     title: str = "",
     actor: str = "",
+    actor_id: int | None = None,
     source: str = "",
     date_from: str | None = None,
     date_to: str | None = None,
@@ -345,6 +372,7 @@ def records(
             record_id=record_id,
             title=title,
             actor=actor,
+            actor_id=actor_id,
             source=source,
             date_from=date_from,
             date_to=date_to,
@@ -363,6 +391,7 @@ def record_status_counts(
     record_id: int | None = None,
     title: str = "",
     actor: str = "",
+    actor_id: int | None = None,
     source: str = "",
     date_from: str | None = None,
     date_to: str | None = None,
@@ -372,6 +401,7 @@ def record_status_counts(
         record_id=record_id,
         title=title,
         actor=actor,
+        actor_id=actor_id,
         source=source,
         date_from=date_from,
         date_to=date_to,

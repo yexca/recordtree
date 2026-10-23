@@ -51,7 +51,7 @@ from .models import (
 )
 from .normalizers import build_source_key, clean_text, normalize_file_type
 from .path_templates import allowed_download_template_variables, normalize_download_folder_template
-from .repositories import DownloadRepository, ImportRepository
+from .repositories import ActorRepository, DownloadRepository, ImportRepository
 from .search import SearchService, normalize_limit, normalize_page
 
 
@@ -588,10 +588,37 @@ class RecordTreeApp:
         finally:
             conn.close()
 
-    def list_actor_page(self, name: str = "", page: int = 1, page_size: int = 50) -> ActorPage:
+    def list_actor_page(
+        self,
+        name: str = "",
+        page: int = 1,
+        page_size: int = 50,
+        *,
+        sort: str = "name_asc",
+        favorites_only: bool = False,
+        favorites_first: bool = False,
+    ) -> ActorPage:
         conn = self._open_app_db()
         try:
-            return SearchService(conn).list_actor_page(name, page=page, page_size=page_size)
+            return SearchService(conn).list_actor_page(
+                name,
+                page=page,
+                page_size=page_size,
+                sort=sort,
+                favorites_only=favorites_only,
+                favorites_first=favorites_first,
+            )
+        finally:
+            conn.close()
+
+    def set_actor_favorite(self, actor_id: int, favorite: bool) -> ActorSummary:
+        conn = self._open_app_db()
+        try:
+            search = SearchService(conn)
+            search.require_actor(actor_id)
+            ActorRepository(conn).set_favorite(actor_id, favorite)
+            conn.commit()
+            return search.get_actor(actor_id)
         finally:
             conn.close()
 
@@ -657,6 +684,7 @@ class RecordTreeApp:
         record_id: int | None = None,
         title: str = "",
         actor: str = "",
+        actor_id: int | None = None,
         source: str = "",
         date_from: str | None = None,
         date_to: str | None = None,
@@ -673,6 +701,7 @@ class RecordTreeApp:
                 record_id=record_id,
                 title=title,
                 actor=actor,
+                actor_id=actor_id,
                 source=source,
                 date_from=date_from,
                 date_to=date_to,
@@ -692,6 +721,7 @@ class RecordTreeApp:
         record_id: int | None = None,
         title: str = "",
         actor: str = "",
+        actor_id: int | None = None,
         source: str = "",
         date_from: str | None = None,
         date_to: str | None = None,
@@ -703,6 +733,7 @@ class RecordTreeApp:
                 record_id=record_id,
                 title=title,
                 actor=actor,
+                actor_id=actor_id,
                 source=source,
                 date_from=date_from,
                 date_to=date_to,

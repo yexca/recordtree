@@ -2,7 +2,7 @@ import { ActionIcon, Loader, Tooltip, useMantineColorScheme, type MantineColorSc
 import { IconDeviceDesktop, IconHash, IconMenu2, IconMoon, IconSun, IconX } from '@tabler/icons-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActiveJobsProvider, useActiveJobs } from './app/ActiveJobs';
-import { NAV_GROUPS, parseHash, recordHref, type Route } from './app/routes';
+import { actorHref, NAV_GROUPS, parseHash, recordHref, type Route } from './app/routes';
 import { Logo } from './components/Logo';
 import { PageErrorBoundary } from './components/PageErrorBoundary';
 
@@ -10,6 +10,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Records = lazy(() => import('./pages/Records'));
 const RecordDetail = lazy(() => import('./pages/RecordDetail'));
 const Actors = lazy(() => import('./pages/Actors'));
+const ActorDetail = lazy(() => import('./pages/ActorDetail'));
 const Platforms = lazy(() => import('./pages/Platforms'));
 const ImportPage = lazy(() => import('./pages/Import'));
 const Downloads = lazy(() => import('./pages/Downloads'));
@@ -68,7 +69,25 @@ function renderPage(route: Route, navigate: Navigate, back: (fallback: string) =
     case 'record':
       return <RecordDetail key={route.recordId} idOrKey={route.recordId ?? ''} onBack={() => back('/records')} />;
     case 'actors':
-      return <Actors />;
+      return (
+        <Actors
+          query={route.query}
+          onQueryChange={(query, options) => navigate(query ? `/actors?${query}` : '/actors', options)}
+        />
+      );
+    case 'actor': {
+      const base = actorHref(route.actorId ?? 0);
+      return (
+        <ActorDetail
+          key={route.actorId}
+          actorId={route.actorId ?? 0}
+          query={route.query}
+          onQueryChange={(query, options) => navigate(query ? `${base}?${query}` : base, options)}
+          onBack={() => back('/actors')}
+          onActorFilter={(actor) => navigate(`/records?${new URLSearchParams({ actor })}`)}
+        />
+      );
+    }
     case 'platforms':
       return <Platforms />;
     case 'import':
@@ -224,7 +243,7 @@ function Shell() {
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
-  }, [route.name, route.recordId]);
+  }, [route.name, route.recordId, route.actorId]);
 
   return (
     <div className="rt-shell">
@@ -247,7 +266,7 @@ function Shell() {
           </strong>
         </header>
         <main className="rt-content">
-          <PageErrorBoundary resetKey={`${route.name}/${route.recordId ?? ''}`}>
+          <PageErrorBoundary resetKey={`${route.name}/${route.recordId ?? route.actorId ?? ''}`}>
             <Suspense
               fallback={
                 <div style={{ display: 'flex', justifyContent: 'center', padding: 64 }}>

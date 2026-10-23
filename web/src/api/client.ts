@@ -1,6 +1,7 @@
 import type {
   ActorSummary,
   ActorPage,
+  ActorSort,
   ApiError,
   DoctorResult,
   DownloadDetail,
@@ -109,11 +110,17 @@ export const api = {
     }),
   actors: (query: string, limit: number) =>
     request<ActorSummary[]>(`/api/actors${params({ query, limit })}`),
-  actorPage: (query: string, page: number, pageSize: number) =>
-    request<ActorPage>(`/api/actors/page${params({ query, page, page_size: pageSize })}`),
+  actorPage: (
+    query: string,
+    page: number,
+    pageSize: number,
+    options: { sort?: ActorSort; favorites_only?: boolean; favorites_first?: boolean } = {},
+  ) => request<ActorPage>(`/api/actors/page${params({ query, page, page_size: pageSize, ...options })}`),
   actorUndownloadedCounts: (ids: number[]) =>
     request<Record<string, number>>(`/api/actors/undownloaded-counts${params({ ids: ids.join(',') })}`),
   actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),
+  setActorFavorite: (actorId: number, favorite: boolean) =>
+    request<ActorSummary>(`/api/actors/${actorId}/favorite`, { method: favorite ? 'PUT' : 'DELETE' }),
   actorRecords: (actorId: number, limit: number) =>
     request<RecordSummary[]>(`/api/actors/${actorId}/records${params({ limit })}`),
   platforms: (query: string, limit: number) =>
@@ -129,6 +136,7 @@ export const api = {
     record_id?: number;
     title?: string;
     actor?: string;
+    actor_id?: number;
     source?: string;
     date_from?: string;
     date_to?: string;
@@ -143,6 +151,7 @@ export const api = {
     record_id?: number;
     title?: string;
     actor?: string;
+    actor_id?: number;
     source?: string;
     date_from?: string;
     date_to?: string;
