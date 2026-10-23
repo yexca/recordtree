@@ -15,8 +15,8 @@ Implement `recordtree init` so a fresh working directory gets a default config f
 
 Create:
 
-- `env/config.toml`
-- `env/recordtree.sqlite3`
+- `config/config.toml`
+- `config/recordtree.sqlite3`
 - `downloads/`
 - `logs/`
 - SQLite schema from `recordtree/schema.sql`
@@ -43,7 +43,7 @@ def resolve_path(base_dir: Path, configured_path: str) -> Path: ...
 Suggested default keys:
 
 ```text
-database_path = "env/recordtree.sqlite3"
+database_path = "config/recordtree.sqlite3"
 downloads_dir = "downloads"
 logs_dir = "logs"
 safety_margin_percent = 5
@@ -95,8 +95,8 @@ All `CREATE TABLE` and `CREATE INDEX` statements should use `IF NOT EXISTS`.
 
 `recordtree init` should:
 
-1. Create `env/`.
-2. Create `env/config.toml` if missing; never overwrite an existing config.
+1. Create `config/`.
+2. Create `config/config.toml` if missing; never overwrite an existing config.
 3. Load config and resolve configured paths.
 4. Create the database parent directory, downloads directory, and logs directory.
 5. Open SQLite and apply `schema.sql`.
@@ -115,7 +115,7 @@ All `CREATE TABLE` and `CREATE INDEX` statements should use `IF NOT EXISTS`.
 
 - `recordtree init` creates all required folders and files.
 - `recordtree init` is safe to run repeatedly.
-- `env/recordtree.sqlite3` is connectable.
+- `config/recordtree.sqlite3` is connectable.
 - `schema_version` is `1`.
 - User-facing failures do not print Python tracebacks.
 

@@ -37,12 +37,14 @@ The host directory `./env/megacmd-home` is mounted at `/root` and stores MEGAcmd
 
 The Compose file mounts these host directories:
 
-- `./env:/app/env`
+- `./config:/app/config` (config and SQLite database)
 - `./downloads:/app/downloads`
 - `./logs:/app/logs`
 - `./files:/app/files`
 
 Runtime data survives container recreation because these paths live on the host. MEGAcmd login state survives through `./env/megacmd-home`. Download output logs are stored under `./logs/downloads/`.
+
+Earlier versions stored the config and database under `./env/`. The local CLI and WebUI move `env/config.toml` and `env/recordtree.sqlite3` into `config/` automatically on first start. Docker no longer mounts `./env` into the container, so for Docker-only setups move both files into `./config/` yourself and set `database = "config/recordtree.sqlite3"` in `config/config.toml`.
 
 ## Useful Commands
 

@@ -59,7 +59,7 @@ legacy/
 |---|---|
 | `recordtree.cli` | Define `recordtree` commands, arguments, exit codes, and Rich output. |
 | `recordtree.app` | Orchestrate user use cases and connect CLI, configuration, repositories, and infrastructure. |
-| `recordtree.config` | Create, read, and parse `env/config.toml`. |
+| `recordtree.config` | Create, read, and parse `config/config.toml`. |
 | `recordtree.db` | Create SQLite connections, initialize schema, and provide transaction boundaries. |
 | `recordtree.models` | Define internal data structures such as imported rows, link items, stats results, and download plans. |
 | `recordtree.normalizers` | Handle text, dates, actor/source names, file types, and source-key inputs. |
@@ -93,14 +93,14 @@ Constraints:
 Default configuration file:
 
 ```text
-env/config.toml
+config/config.toml
 ```
 
 Recommended content:
 
 ```toml
 [paths]
-database = "env/recordtree.sqlite3"
+database = "config/recordtree.sqlite3"
 downloads = "downloads"
 logs = "logs"
 

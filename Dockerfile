@@ -28,7 +28,7 @@ COPY --from=frontend /app/web/dist ./web/dist
 
 RUN python -m pip install -e ".[web]"
 
-RUN mkdir -p env downloads logs files/uploads
+RUN mkdir -p config downloads logs files/uploads
 
 EXPOSE 7647
 

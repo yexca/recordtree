@@ -25,7 +25,7 @@ The high-level design focuses on:
 ## Main Design Conclusions
 
 - Use a single-machine CLI architecture, without a background service, GUI, or remote database.
-- Use SQLite for local persistence. The default database file is `env/recordtree.sqlite3`.
+- Use SQLite for local persistence. The default database file is `config/recordtree.sqlite3`.
 - Excel is the primary v1 data source; JSON and legacy SQLite are compatibility/migration paths.
 - Use `record_groups` as the primary record-group entity, and use `download_links` to store current and historical MEGA links.
 - Link-level download status is authoritative. Record-group status is derived from link status and recent download attempts.

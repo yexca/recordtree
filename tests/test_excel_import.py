@@ -177,7 +177,7 @@ def test_excel_import_records_errors_and_is_idempotent(tmp_path: Path, monkeypat
     assert second.stats.skipped_links == 4
     assert second.stats.error_count == 1
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT COUNT(*) FROM record_groups").fetchone()[0] == 3
         assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 0").fetchone()[0] == 4
@@ -252,7 +252,7 @@ def test_excel_duplicate_source_keys_merge_links_and_reimport_is_idempotent(
     assert second.stats.link_sets_changed == 0
     assert second.stats.inserted_links == 0
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT COUNT(*) FROM record_groups").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 0").fetchone()[0] == 2

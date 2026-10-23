@@ -115,7 +115,7 @@ class DownloadPlan:
 Responsibilities:
 
 - Define default paths and default download settings.
-- Create `env/config.toml`.
+- Create `config/config.toml`.
 - Read and validate configuration.
 - Resolve relative paths to absolute paths under the project working directory.
 

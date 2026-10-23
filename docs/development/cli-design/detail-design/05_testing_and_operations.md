@@ -299,7 +299,7 @@ If import performance is insufficient, optimize in this order:
 
 User documentation should recommend:
 
-- Back up `env/recordtree.sqlite3` before importing the legacy DB.
+- Back up `config/recordtree.sqlite3` before importing the legacy DB.
 - Back up the database file before large re-imports.
 - In SQLite WAL mode, handle `-wal` and `-shm` files during backup, or use the SQLite backup API.
 

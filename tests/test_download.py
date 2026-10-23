@@ -63,7 +63,7 @@ def _actor_record(index: int) -> ImportRecord:
 def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -79,7 +79,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
 def _setup_batch_actor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -169,7 +169,7 @@ def test_download_success_failure_and_preflight_blocks(
     assert result.failed == 1
     assert len(calls) == 2
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT status FROM downloads WHERE id = ?", (result.download_id,)).fetchone()[0] == "failed"
         statuses = {
@@ -249,7 +249,7 @@ def test_download_cancelled_records_row(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert result.status == "cancelled"
     assert not (tmp_path / "downloads" / str(group_id)).exists()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT status FROM downloads WHERE id = ?", (result.download_id,)).fetchone()[0] == "cancelled"
     finally:
@@ -314,7 +314,7 @@ def test_download_actor_skips_completed_links_in_partial_records(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup(tmp_path, monkeypatch)
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         actor_id = int(conn.execute("SELECT id FROM actors WHERE name = ?", ("Download Actor",)).fetchone()[0])
         completed_link_id = int(

@@ -83,8 +83,8 @@ setup_env.ps1
 Implement:
 
 - `recordtree init`
-- Config creation under `env/config.toml`
-- SQLite schema creation under `env/recordtree.sqlite3`
+- Config creation under `config/config.toml`
+- SQLite schema creation under `config/recordtree.sqlite3`
 - `downloads/` and `logs/` creation
 
 Acceptance checks:
@@ -281,8 +281,8 @@ README should include:
 ## Suggested Defaults
 
 - Command name: `recordtree`
-- Database: `env/recordtree.sqlite3`
-- Config: `env/config.toml`
+- Database: `config/recordtree.sqlite3`
+- Config: `config/config.toml`
 - Downloads: `downloads/<record_group_id>/`
 - Logs: `logs/`
 - Download default: exclude `.par2`

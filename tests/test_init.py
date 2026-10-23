@@ -45,8 +45,8 @@ def test_init_creates_paths_and_is_idempotent(tmp_path: Path, monkeypatch) -> No
     config_text = first.config_path.read_text(encoding="utf-8")
     second = RecordTreeApp().init()
 
-    assert first.config_path == tmp_path / "env" / "config.toml"
-    assert first.database_path == tmp_path / "env" / "recordtree.sqlite3"
+    assert first.config_path == tmp_path / "config" / "config.toml"
+    assert first.database_path == tmp_path / "config" / "recordtree.sqlite3"
     assert first.downloads_dir == tmp_path / "downloads"
     assert first.logs_dir == tmp_path / "logs"
     assert first.schema_version == "2"
@@ -89,7 +89,7 @@ def test_init_schema_tables_indexes_and_foreign_keys(tmp_path: Path, monkeypatch
 
 
 def test_ensure_config_does_not_overwrite_existing_file(tmp_path: Path) -> None:
-    config_path = tmp_path / "env" / "config.toml"
+    config_path = tmp_path / "config" / "config.toml"
     config_path.parent.mkdir()
     config_path.write_text("[paths]\ndatabase = \"custom.sqlite3\"\n", encoding="utf-8")
 
@@ -100,11 +100,11 @@ def test_ensure_config_does_not_overwrite_existing_file(tmp_path: Path) -> None:
 
 def test_load_config_uses_defaults_for_missing_sections(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
-    config_path = ensure_config(Path("env/config.toml"))
+    config_path = ensure_config(Path("config/config.toml"))
 
     loaded = load_config(config_path)
 
-    assert loaded.database_path == tmp_path / "env" / "recordtree.sqlite3"
+    assert loaded.database_path == tmp_path / "config" / "recordtree.sqlite3"
     assert loaded.downloads_dir == tmp_path / "downloads"
     assert loaded.logs_dir == tmp_path / "logs"
     assert loaded.safety_margin_percent == 5
@@ -117,3 +117,26 @@ def test_resolve_path_keeps_absolute_paths(tmp_path: Path) -> None:
     absolute = tmp_path / "custom.sqlite3"
 
     assert resolve_path(Path.cwd(), str(absolute)) == absolute
+
+
+def test_init_migrates_legacy_env_layout(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    config_dir = tmp_path / "config"
+    legacy_dir = tmp_path / "env"
+    legacy_dir.mkdir()
+    legacy_config = (config_dir / "config.toml").read_text(encoding="utf-8").replace(
+        "config/recordtree.sqlite3", "env/recordtree.sqlite3"
+    )
+    (legacy_dir / "config.toml").write_text(legacy_config, encoding="utf-8")
+    (config_dir / "recordtree.sqlite3").rename(legacy_dir / "recordtree.sqlite3")
+    (config_dir / "config.toml").unlink()
+
+    result = RecordTreeApp().init()
+
+    assert result.config_path == config_dir / "config.toml"
+    assert result.database_path == config_dir / "recordtree.sqlite3"
+    assert result.database_path.exists()
+    assert not (legacy_dir / "config.toml").exists()
+    assert not (legacy_dir / "recordtree.sqlite3").exists()
+    assert 'database = "config/recordtree.sqlite3"' in result.config_path.read_text(encoding="utf-8")

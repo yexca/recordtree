@@ -9,6 +9,7 @@ record/
 files/
 dev_documents/
 real_test/
+config/
 env/
 downloads/
 logs/

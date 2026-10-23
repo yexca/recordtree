@@ -46,7 +46,7 @@ def _record(
 def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -153,7 +153,7 @@ def test_search_and_info_commands(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert {row.title for row in undownloaded} == {"ASMR sleep", "Talk"}
     assert app.list_undownloaded(source="rplay")[0].title == "Talk"
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         actor_a_id = int(
             conn.execute("SELECT id FROM actors WHERE name = ?", ("Actor A",)).fetchone()[0]

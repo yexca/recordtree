@@ -59,7 +59,7 @@ class RecordTreeApp:
     """Application service layer for CLI use cases."""
 
     def init(self) -> InitResult:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
 
         app_config.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -87,7 +87,7 @@ class RecordTreeApp:
 
     def doctor(self) -> None:
         checks: list[DoctorCheck] = []
-        config_path = Path("env/config.toml").expanduser()
+        config_path = config_module.default_config_path().expanduser()
         app_config = None
         if config_path.exists():
             try:
@@ -142,7 +142,7 @@ class RecordTreeApp:
         return DoctorResult(checks)
 
     def mega_status(self) -> MegaAccountStatus:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         get_status = _mega_command_status(app_config.mega_get)
         whoami_status = _mega_command_status(app_config.mega_whoami)
@@ -173,7 +173,7 @@ class RecordTreeApp:
             raise ValidationError("MEGA email is required.")
         if not password:
             raise ValidationError("MEGA password is required.")
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         mega_login = mega.resolve_executable(app_config.mega_login)
         result = mega.login_account(mega_login, clean_email, password, auth_code.strip() if auth_code else None)
@@ -183,7 +183,7 @@ class RecordTreeApp:
         return self.mega_status()
 
     def mega_logout(self) -> MegaAccountStatus:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         mega_logout = mega.resolve_executable(app_config.mega_logout)
         result = mega.logout_account(mega_logout)
@@ -202,7 +202,7 @@ class RecordTreeApp:
             raise NotFoundError(f"Import source does not exist: {source_path}")
         source_type, importer = self._create_importer(source_path)
 
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         app_config.database_path.parent.mkdir(parents=True, exist_ok=True)
         app_config.logs_dir.mkdir(parents=True, exist_ok=True)
@@ -357,7 +357,7 @@ class RecordTreeApp:
             conn.close()
 
     def maintenance_summary(self) -> MaintenanceSummary:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         database_size = app_config.database_path.stat().st_size if app_config.database_path.exists() else None
         backup_dir = app_config.logs_dir / "backups"
@@ -398,7 +398,7 @@ class RecordTreeApp:
         return checks
 
     def backup_database(self) -> BackupSummary:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         if not app_config.database_path.exists():
             raise ConfigError(f"Database file does not exist: {app_config.database_path}")
@@ -423,7 +423,7 @@ class RecordTreeApp:
         )
 
     def list_backups(self) -> list[BackupSummary]:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         return _list_backups(app_config.logs_dir / "backups")
 
@@ -432,7 +432,7 @@ class RecordTreeApp:
             raise ValidationError("Backup filename is not valid.")
         if Path(filename).name != filename:
             raise ValidationError("Backup filename must not include a path.")
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         backup_dir = (app_config.logs_dir / "backups").resolve()
         backup_path = (backup_dir / filename).resolve()
@@ -738,7 +738,7 @@ class RecordTreeApp:
         output: Path | None = None,
         only_undownloaded: bool = False,
     ) -> DownloadPlan:
-        app_config = config_module.load_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_module.default_config_path())
         conn = self._open_app_db()
         try:
             return SearchService(conn).build_download_plan(
@@ -767,7 +767,7 @@ class RecordTreeApp:
         only_undownloaded: bool = False,
         output_callback: Callable[[str], None] | None = None,
     ) -> DownloadExecutionResult:
-        app_config = config_module.load_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_module.default_config_path())
         plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded)
         request_json = _download_request_json(
             kind="record",
@@ -907,7 +907,7 @@ class RecordTreeApp:
             conn.close()
 
     def web_settings(self) -> dict[str, object]:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         return {
             "paths": {
@@ -930,7 +930,7 @@ class RecordTreeApp:
         minimum_free_space_mb: int,
         include_par2_by_default: bool,
     ) -> dict[str, object]:
-        config_path = config_module.ensure_config(Path("env/config.toml"))
+        config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
         if safety_margin_percent < 0:
             raise ValidationError("Safety margin percent must be non-negative.")
@@ -990,7 +990,7 @@ class RecordTreeApp:
         detail = self.get_download(download_id)
         if not detail.log_path:
             raise NotFoundError(f"Download log not found: {download_id}")
-        app_config = config_module.load_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_module.default_config_path())
         logs_dir = app_config.logs_dir.resolve()
         log_path = Path(detail.log_path).expanduser().resolve()
         try:
@@ -1087,7 +1087,7 @@ class RecordTreeApp:
         raise ValidationError(f"Unsupported import file extension: {extension}")
 
     def _open_app_db(self):
-        app_config = config_module.load_config(Path("env/config.toml"))
+        app_config = config_module.load_config(config_module.default_config_path())
         if not app_config.database_path.exists():
             raise ConfigError(f"Database file does not exist: {app_config.database_path}")
         conn = db.connect(app_config.database_path)

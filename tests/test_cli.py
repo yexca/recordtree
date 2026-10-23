@@ -37,7 +37,7 @@ def _record(actor: str = "CLI Actor") -> ImportRecord:
 def _setup_record(tmp_path: Path, monkeypatch) -> int:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -60,7 +60,7 @@ def test_cli_init_is_idempotent(tmp_path: Path, monkeypatch) -> None:
     assert first.exit_code == 0
     assert second.exit_code == 0
     assert "RecordTree initialized" in first.output
-    assert (tmp_path / "env" / "recordtree.sqlite3").exists()
+    assert (tmp_path / "config" / "recordtree.sqlite3").exists()
 
 
 def test_cli_unsupported_import_extension_returns_exit_code_2(tmp_path: Path, monkeypatch) -> None:

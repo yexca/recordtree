@@ -87,7 +87,7 @@ def test_json_import_records_errors_overlap_and_is_idempotent(tmp_path: Path, mo
     RecordTreeApp().init()
     shared_url = "https://example.invalid/excel/shared"
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -117,7 +117,7 @@ def test_json_import_records_errors_overlap_and_is_idempotent(tmp_path: Path, mo
     assert second.stats.skipped_links == 2
     assert second.stats.error_count == 2
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         excel = conn.execute("SELECT * FROM record_groups WHERE source_type = 'xlsx'").fetchone()
         assert excel["title"] == "Excel title"

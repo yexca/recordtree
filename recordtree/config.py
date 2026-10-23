@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 import tomllib
 
 from .exceptions import ConfigError
 from .path_templates import DEFAULT_DOWNLOAD_FOLDER_TEMPLATE, normalize_download_folder_template
+
+DEFAULT_CONFIG_PATH = Path("config/config.toml")
+DEFAULT_DATABASE_PATH = "config/recordtree.sqlite3"
+LEGACY_CONFIG_PATH = Path("env/config.toml")
+LEGACY_DATABASE_PATH = "env/recordtree.sqlite3"
 
 
 @dataclass(frozen=True)
@@ -27,7 +33,7 @@ class AppConfig:
 def default_config() -> dict[str, object]:
     return {
         "paths": {
-            "database": "env/recordtree.sqlite3",
+            "database": DEFAULT_DATABASE_PATH,
             "downloads": "downloads",
             "logs": "logs",
         },
@@ -49,6 +55,31 @@ def default_config() -> dict[str, object]:
     }
 
 
+def default_config_path() -> Path:
+    migrate_legacy_layout()
+    return DEFAULT_CONFIG_PATH
+
+
+def migrate_legacy_layout() -> None:
+    """Move config and database from the old env/ layout into config/."""
+    if DEFAULT_CONFIG_PATH.exists() or not LEGACY_CONFIG_PATH.exists():
+        return
+
+    DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    config_text = LEGACY_CONFIG_PATH.read_text(encoding="utf-8")
+    legacy_database = f'database = "{LEGACY_DATABASE_PATH}"'
+    if legacy_database in config_text:
+        for suffix in ("", "-wal", "-shm"):
+            source = Path(LEGACY_DATABASE_PATH + suffix)
+            target = Path(DEFAULT_DATABASE_PATH + suffix)
+            if source.exists() and not target.exists():
+                shutil.move(source, target)
+        config_text = config_text.replace(legacy_database, f'database = "{DEFAULT_DATABASE_PATH}"')
+
+    DEFAULT_CONFIG_PATH.write_text(config_text, encoding="utf-8")
+    LEGACY_CONFIG_PATH.unlink()
+
+
 def ensure_config(path: Path) -> Path:
     config_path = path.expanduser()
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +89,7 @@ def ensure_config(path: Path) -> Path:
 
 
 def load_config(path: Path | None = None) -> AppConfig:
-    config_path = (path or Path("env/config.toml")).expanduser()
+    config_path = (path or default_config_path()).expanduser()
     if not config_path.exists():
         raise ConfigError(f"Config file does not exist: {config_path}")
 
@@ -120,8 +151,8 @@ def resolve_path(base_dir: Path, configured_path: str) -> Path:
 
 
 def _format_default_config() -> str:
-    return """[paths]
-database = "env/recordtree.sqlite3"
+    return f"""[paths]
+database = "{DEFAULT_DATABASE_PATH}"
 downloads = "downloads"
 logs = "logs"
 
@@ -129,7 +160,7 @@ logs = "logs"
 safety_margin_percent = 5
 safety_margin_min_mb = 10240
 include_par2_by_default = false
-folder_template = "{actor_safe_name}/{record_group_id}"
+folder_template = "{_toml_string(DEFAULT_DOWNLOAD_FOLDER_TEMPLATE)}"
 
 [mega]
 mega_get = "mega-get"

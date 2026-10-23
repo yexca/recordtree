@@ -39,7 +39,7 @@ The host directory `./env/megacmd-home` is mounted at `/root` and stores MEGAcmd
 
 The compose file mounts these host directories into the container:
 
-- `./env:/app/env` for config and SQLite database
+- `./config:/app/config` for config and SQLite database
 - `./downloads:/app/downloads` for downloaded files
 - `./logs:/app/logs` for import error CSVs, backups, and download logs such as `logs/downloads/download_<download_id>.log`
 - `./files:/app/files` for uploaded import files

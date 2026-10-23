@@ -55,7 +55,7 @@ Before large real-data imports:
 recordtree stats
 ```
 
-Back up `env/recordtree.sqlite3`. If SQLite WAL mode files are present, include `env/recordtree.sqlite3-wal` and `env/recordtree.sqlite3-shm`, or use the SQLite backup API.
+Back up `config/recordtree.sqlite3`. If SQLite WAL mode files are present, include `config/recordtree.sqlite3-wal` and `config/recordtree.sqlite3-shm`, or use the SQLite backup API.
 
 After imports, inspect:
 

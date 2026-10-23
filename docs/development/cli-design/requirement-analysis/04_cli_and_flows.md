@@ -51,8 +51,8 @@ flowchart TD
 Default paths:
 
 ```text
-env/config.toml
-env/recordtree.sqlite3
+config/config.toml
+config/recordtree.sqlite3
 downloads/
 logs/
 ```
@@ -304,11 +304,11 @@ Recommended checks:
 
 ## 13. Configuration
 
-Recommended `env/config.toml`:
+Recommended `config/config.toml`:
 
 ```toml
 [paths]
-database = "env/recordtree.sqlite3"
+database = "config/recordtree.sqlite3"
 downloads = "downloads"
 logs = "logs"
 

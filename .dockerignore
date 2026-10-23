@@ -1,6 +1,7 @@
 .git
 .venv
 venv
+config
 env
 downloads
 logs

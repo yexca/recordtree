@@ -60,7 +60,7 @@ def _record() -> ImportRecord:
 def _setup_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
@@ -113,15 +113,15 @@ async def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.Mon
     assert response.status_code == 200
     payload = response.json()
     assert payload["schema_version"] == "2"
-    assert Path(payload["database_path"]) == tmp_path / "env" / "recordtree.sqlite3"
-    assert (tmp_path / "env" / "recordtree.sqlite3").exists()
+    assert Path(payload["database_path"]) == tmp_path / "config" / "recordtree.sqlite3"
+    assert (tmp_path / "config" / "recordtree.sqlite3").exists()
 
 
 async def test_web_lifespan_initializes_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
 
     async with app.router.lifespan_context(app):
-        assert (tmp_path / "env" / "recordtree.sqlite3").exists()
+        assert (tmp_path / "config" / "recordtree.sqlite3").exists()
 
 
 async def test_search_detail_stats_and_download_plan_endpoints(
@@ -314,7 +314,7 @@ async def test_maintenance_endpoints_report_and_run_safe_actions(
         assert vacuum["ok"] is True
         assert "vacuum" in vacuum["message"].casefold()
 
-        bad_backup = await client.get("/api/maintenance/backups/../env/recordtree.sqlite3")
+        bad_backup = await client.get("/api/maintenance/backups/../config/recordtree.sqlite3")
         assert bad_backup.status_code in {400, 404}
 
 
@@ -420,7 +420,7 @@ async def test_import_history_detail_and_errors_endpoints(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         source = tmp_path / "history.xlsx"
         source.write_bytes(b"xlsx")
@@ -534,7 +534,7 @@ async def test_download_history_detail_items_and_job_list_endpoints(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         link_id = int(
             conn.execute(
@@ -626,7 +626,7 @@ async def test_init_marks_stale_downloads_interrupted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     group_id = _setup_record(tmp_path, monkeypatch)
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         link_id = int(conn.execute("SELECT id FROM download_links LIMIT 1").fetchone()[0])
         cursor = conn.execute(
@@ -654,7 +654,7 @@ async def test_init_marks_stale_downloads_interrupted(
 
     RecordTreeApp().init()
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT status FROM downloads ORDER BY id DESC LIMIT 1").fetchone()[0] == "interrupted"
         assert conn.execute("SELECT status FROM download_items ORDER BY id DESC LIMIT 1").fetchone()[0] == "interrupted"

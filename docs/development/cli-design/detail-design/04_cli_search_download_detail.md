@@ -26,7 +26,7 @@ Shared command options can be added later:
 --verbose
 ```
 
-v1 can initially use the default `env/config.toml`.
+v1 can initially use the default `config/config.toml`.
 
 ## 2. Commands And Exit Codes
 

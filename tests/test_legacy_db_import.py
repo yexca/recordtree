@@ -131,7 +131,7 @@ def test_legacy_db_import_matches_creates_and_preserves_status(tmp_path: Path, m
     assert second.stats.skipped_groups == 2
     assert second.stats.error_count == 1
 
-    conn = connect(tmp_path / "env" / "recordtree.sqlite3")
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
         assert conn.execute("SELECT COUNT(*) FROM record_groups").fetchone()[0] == 2
         assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 0").fetchone()[0] == 2

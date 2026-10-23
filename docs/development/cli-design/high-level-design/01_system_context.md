@@ -47,11 +47,11 @@ flowchart LR
 - Search filters: actor, title, source, date range, download status.
 - Download target: record group id or `source_key`.
 - Download filters: whether to include `.par2`, file type list, output directory, and whether to skip confirmation.
-- Local configuration: `env/config.toml`.
+- Local configuration: `config/config.toml`.
 
 ## 5. Main Outputs
 
-- New SQLite database: `env/recordtree.sqlite3`.
+- New SQLite database: `config/recordtree.sqlite3`.
 - CLI search results and info tables.
 - Import statistics, import error records, and optional error CSV files.
 - Downloaded files, defaulting to `downloads/<record_group_id>/`.

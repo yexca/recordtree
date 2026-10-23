@@ -5,13 +5,13 @@
 Default database path:
 
 ```text
-env/recordtree.sqlite3
+config/recordtree.sqlite3
 ```
 
 `recordtree init` is responsible for:
 
-1. Creating `env/`, `downloads/`, and `logs/`.
-2. Creating default `env/config.toml`.
+1. Creating `config/`, `downloads/`, and `logs/`.
+2. Creating default `config/config.toml`.
 3. Connecting to SQLite.
 4. Executing `recordtree/schema.sql`.
 5. Printing actual paths.

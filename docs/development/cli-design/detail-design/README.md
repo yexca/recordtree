@@ -33,8 +33,8 @@ The v1 detailed design covers:
 ## Key Conventions
 
 - Command name: `recordtree`.
-- Default database: `env/recordtree.sqlite3`.
-- Default configuration: `env/config.toml`.
+- Default database: `config/recordtree.sqlite3`.
+- Default configuration: `config/config.toml`.
 - Default download directory: `downloads/<record_group_id>/`.
 - Default log directory: `logs/`.
 - Excel is the primary data source; JSON and legacy SQLite are compatibility/migration paths.

@@ -9,7 +9,7 @@ services:
     environment:
       TZ: Asia/Tokyo
     volumes:
-      - ./env:/app/env
+      - ./config:/app/config
       - ./downloads:/app/downloads
       - ./logs:/app/logs
       - ./files:/app/files

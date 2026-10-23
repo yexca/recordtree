@@ -122,7 +122,7 @@ logs/import_<import_id>_errors.csv
 
 Backup guidance:
 
-- Back up `env/recordtree.sqlite3` before importing a legacy DB.
+- Back up `config/recordtree.sqlite3` before importing a legacy DB.
 - Back up the database before large re-imports.
 - With SQLite WAL mode, account for `-wal` and `-shm`, or use the SQLite backup API.
 

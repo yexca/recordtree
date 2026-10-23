@@ -10,8 +10,8 @@ recordtree init
 
 Default runtime paths:
 
-- Config: `env/config.toml`
-- Database: `env/recordtree.sqlite3`
+- Config: `config/config.toml`
+- Database: `config/recordtree.sqlite3`
 - Downloads: `downloads/`
 - Logs: `logs/`
 - Import error CSVs: `logs/import_<import_id>_errors.csv`
@@ -69,7 +69,7 @@ recordtree download --actor 12 --count 5 --yes
 
 By default, `.par2` files are excluded. Use `--include-par2` to include them.
 
-When `--output` is omitted, downloads are stored under the configured downloads root using the folder template from `env/config.toml`. The default template is:
+When `--output` is omitted, downloads are stored under the configured downloads root using the folder template from `config/config.toml`. The default template is:
 
 ```text
 {actor_safe_name}/{record_group_id}
