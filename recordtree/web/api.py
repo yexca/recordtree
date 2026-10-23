@@ -338,6 +338,7 @@ def records(
     only_undownloaded: bool = False,
     page: int = 1,
     page_size: int = 50,
+    sort: str = "delivered_desc",
 ) -> dict[str, object]:
     return _serialize(
         RecordTreeApp().list_records(
@@ -352,7 +353,29 @@ def records(
             only_undownloaded=only_undownloaded,
             page=page,
             page_size=page_size,
+            sort=sort,
         )
+    )
+
+
+@app.get("/api/records/status-counts")
+def record_status_counts(
+    record_id: int | None = None,
+    title: str = "",
+    actor: str = "",
+    source: str = "",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    file_type: str | None = None,
+) -> dict[str, int]:
+    return RecordTreeApp().record_status_counts(
+        record_id=record_id,
+        title=title,
+        actor=actor,
+        source=source,
+        date_from=date_from,
+        date_to=date_to,
+        file_type=file_type,
     )
 
 

@@ -22,6 +22,8 @@ import type {
   PlatformPage,
   RecordDetail,
   RecordPage,
+  RecordSort,
+  RecordStatusCounts,
   RecordSummary,
   SettingsPayload,
   StatsResult,
@@ -135,7 +137,17 @@ export const api = {
     only_undownloaded?: boolean;
     page: number;
     page_size: number;
+    sort?: RecordSort;
   }) => request<RecordPage>(`/api/records${params(query)}`),
+  recordStatusCounts: (query: {
+    record_id?: number;
+    title?: string;
+    actor?: string;
+    source?: string;
+    date_from?: string;
+    date_to?: string;
+    file_type?: string;
+  }) => request<RecordStatusCounts>(`/api/records/status-counts${params(query)}`),
   searchTitle: (query: string, limit: number) =>
     request<RecordSummary[]>(`/api/records/search/title${params({ query, limit })}`),
   searchSource: (query: string, limit: number) =>

@@ -26,6 +26,16 @@ from .sizes import calculate_margin
 
 
 DEFAULT_LIMIT = 50
+RECORD_SORTS = {
+    "delivered_desc": "rg.delivery_date DESC, rg.entry_date DESC, rg.id DESC",
+    "delivered_asc": "rg.delivery_date IS NULL, rg.delivery_date ASC, rg.entry_date ASC, rg.id ASC",
+    "size_desc": "COALESCE(rg.size_bytes, 0) DESC, rg.id DESC",
+    "size_asc": "COALESCE(rg.size_bytes, 0) ASC, rg.id ASC",
+    "id_desc": "rg.id DESC",
+    "id_asc": "rg.id ASC",
+    "title_asc": "rg.title COLLATE NOCASE ASC, rg.id ASC",
+    "title_desc": "rg.title COLLATE NOCASE DESC, rg.id DESC",
+}
 MAX_LIMIT = 500
 
 
@@ -381,9 +391,13 @@ class SearchService:
         only_undownloaded: bool = False,
         page: int = 1,
         page_size: int = DEFAULT_LIMIT,
+        sort: str = "delivered_desc",
     ) -> RecordPage:
         normalized_page = normalize_page(page)
         normalized_page_size = normalize_limit(page_size)
+        order_sql = RECORD_SORTS.get(sort)
+        if order_sql is None:
+            raise ValidationError(f"Sort must be one of: {', '.join(RECORD_SORTS)}.")
         where_sql, params = self._build_record_filters(
             record_id=record_id,
             title=title,
@@ -397,7 +411,7 @@ class SearchService:
         )
         total = self._count_records(where_sql, params)
         offset = (normalized_page - 1) * normalized_page_size
-        items = self._list_records_page(where_sql, params, normalized_page_size, offset)
+        items = self._list_records_page(where_sql, params, normalized_page_size, offset, order_sql)
         total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
         return RecordPage(
             items=items,
@@ -406,6 +420,54 @@ class SearchService:
             total=total,
             total_pages=total_pages,
         )
+
+    def record_status_counts(
+        self,
+        *,
+        record_id: int | None = None,
+        title: str = "",
+        actor: str = "",
+        source: str = "",
+        date_from: str | None = None,
+        date_to: str | None = None,
+        file_type: str | None = None,
+    ) -> dict[str, int]:
+        """Counts records per download status for the given filters, ignoring any status filter."""
+        where_sql, params = self._build_record_filters(
+            record_id=record_id,
+            title=title,
+            actor=actor,
+            source=source,
+            date_from=date_from,
+            date_to=date_to,
+            downloaded=None,
+            file_type=file_type,
+            only_undownloaded=False,
+        )
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(*) AS total,
+                   COALESCE(SUM(active = 0), 0) AS unknown,
+                   COALESCE(SUM(active > 0 AND completed = 0), 0) AS none,
+                   COALESCE(SUM(completed > 0 AND completed < active), 0) AS partial,
+                   COALESCE(SUM(active > 0 AND completed = active), 0) AS all_done
+            FROM (
+                SELECT {_active_count_sql()} AS active,
+                       {_completed_count_sql()} AS completed
+                FROM record_groups rg
+                {where_sql}
+            )
+            """,
+            params,
+        ).fetchone()
+        return {
+            "total": int(row["total"]),
+            "all": int(row["all_done"]),
+            "partial": int(row["partial"]),
+            "none": int(row["none"]),
+            "unknown": int(row["unknown"]),
+            "pending": int(row["partial"]) + int(row["none"]),
+        }
 
     def search_title(self, keyword: str, limit: int = DEFAULT_LIMIT) -> list[RecordSummary]:
         text = f"%{normalize_search_text(keyword)}%"
@@ -792,6 +854,7 @@ class SearchService:
         params: tuple[object, ...],
         limit: int,
         offset: int,
+        order_sql: str = RECORD_SORTS["delivered_desc"],
     ) -> list[RecordSummary]:
         rows = self.conn.execute(
             f"""
@@ -811,7 +874,7 @@ class SearchService:
                    ) AS completed_count
             FROM record_groups rg
             {where_sql}
-            ORDER BY rg.delivery_date DESC, rg.entry_date DESC, rg.id DESC
+            ORDER BY {order_sql}
             LIMIT ? OFFSET ?
             """,
             params + (limit, offset),

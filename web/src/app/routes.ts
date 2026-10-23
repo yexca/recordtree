@@ -25,11 +25,21 @@ export interface Route {
   name: RouteName;
   recordId?: string;
   section?: string;
+  /** Raw query string after `?`, used for page state such as record filters. */
+  query: string;
 }
 
-/** Parses `#/...` hashes. Legacy paths (`#/search`, `#/platform`, `#/status`) stay valid. */
+/** Parses `#/...?query` hashes. Legacy paths (`#/search`, `#/platform`, `#/status`) stay valid. */
 export function parseHash(hash: string): Route {
-  const [head = '', second, third] = hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+  const raw = hash.replace(/^#\/?/, '');
+  const queryAt = raw.indexOf('?');
+  const path = queryAt === -1 ? raw : raw.slice(0, queryAt);
+  const query = queryAt === -1 ? '' : raw.slice(queryAt + 1);
+  return { ...parsePath(path), query };
+}
+
+function parsePath(path: string): Omit<Route, 'query'> {
+  const [head = '', second, third] = path.split('/').map(decodeURIComponent);
   switch (head) {
     case 'records':
       return second ? { name: 'record', recordId: second } : { name: 'records' };

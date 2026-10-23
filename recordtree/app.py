@@ -665,6 +665,7 @@ class RecordTreeApp:
         only_undownloaded: bool = False,
         page: int = 1,
         page_size: int = 50,
+        sort: str = "delivered_desc",
     ) -> RecordPage:
         conn = self._open_app_db()
         try:
@@ -680,6 +681,32 @@ class RecordTreeApp:
                 only_undownloaded=only_undownloaded,
                 page=page,
                 page_size=page_size,
+                sort=sort,
+            )
+        finally:
+            conn.close()
+
+    def record_status_counts(
+        self,
+        *,
+        record_id: int | None = None,
+        title: str = "",
+        actor: str = "",
+        source: str = "",
+        date_from: str | None = None,
+        date_to: str | None = None,
+        file_type: str | None = None,
+    ) -> dict[str, int]:
+        conn = self._open_app_db()
+        try:
+            return SearchService(conn).record_status_counts(
+                record_id=record_id,
+                title=title,
+                actor=actor,
+                source=source,
+                date_from=date_from,
+                date_to=date_to,
+                file_type=file_type,
             )
         finally:
             conn.close()

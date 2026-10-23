@@ -213,6 +213,16 @@ async def test_search_detail_stats_and_download_plan_endpoints(
         assert id_page["total"] == 1
         assert id_page["items"][0]["id"] == group_id
 
+        for sort in ("delivered_asc", "size_desc", "id_asc", "title_desc"):
+            sorted_page = (await client.get("/api/records", params={"sort": sort})).json()
+            assert sorted_page["items"][0]["id"] == group_id
+
+        counts = (await client.get("/api/records/status-counts", params={"title": "asmr"})).json()
+        assert counts == {"total": 1, "all": 0, "partial": 1, "none": 0, "unknown": 0, "pending": 1}
+        empty_counts = (await client.get("/api/records/status-counts", params={"title": "missing"})).json()
+        assert empty_counts["total"] == 0
+        assert empty_counts["pending"] == 0
+
         detail = (await client.get(f"/api/records/{group_id}")).json()
         assert detail["downloaded"] == "partial"
         assert len(detail["links"]) == 3
@@ -339,6 +349,10 @@ async def test_api_maps_project_errors_to_http_responses(
         bad_page = await client.get("/api/records", params={"page": 0})
         assert bad_page.status_code == 400
         assert bad_page.json()["error"] == "ValidationError"
+
+        bad_sort = await client.get("/api/records", params={"sort": "rg.id; DROP TABLE"})
+        assert bad_sort.status_code == 400
+        assert bad_sort.json()["error"] == "ValidationError"
 
 
 async def test_import_upload_creates_background_job_and_reports_result(

@@ -34,3 +34,5 @@ env/python/
 .vscode/
 Thumbs.db
 desktop.ini
+
+demo/

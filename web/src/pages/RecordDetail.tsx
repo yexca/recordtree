@@ -1,21 +1,15 @@
-import { ActionIcon, CopyButton, Group, Table, Text, Tooltip } from '@mantine/core';
-import {
-  IconBuildingBroadcastTower,
-  IconCalendar,
-  IconCheck,
-  IconCopy,
-  IconDatabase,
-  IconUser,
-} from '@tabler/icons-react';
+import { Group } from '@mantine/core';
+import { IconBuildingBroadcastTower, IconCalendar, IconDatabase, IconUser } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { RecordDetail as RecordDetailType } from '../api/types';
-import { KeyValue, LinkProgress, TableWrap } from '../components/data';
+import { KeyValue, LinkProgress } from '../components/data';
 import { DownloadPlanner } from '../components/DownloadPlanner';
 import { EmptyState, ErrorBlock, LoadingBlock } from '../components/feedback';
 import { Page, PageHeader, Panel } from '../components/layout';
-import { DownloadedBadge, StatusBadge } from '../components/StatusBadge';
-import { errorMessage, formatBytes, formatText, previewUrl } from '../lib/format';
+import { RecordLinks } from '../components/RecordLinks';
+import { DownloadedBadge } from '../components/StatusBadge';
+import { errorMessage, formatBytes, formatText } from '../lib/format';
 
 export default function RecordDetail({
   idOrKey,
@@ -127,47 +121,7 @@ export default function RecordDetail({
             {record.links.length === 0 ? (
               <EmptyState compact message="This record has no active links." />
             ) : (
-              <TableWrap>
-                <Table>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>#</Table.Th>
-                      <Table.Th>Type</Table.Th>
-                      <Table.Th style={{ textAlign: 'right' }}>Size</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>URL</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {record.links.map((link) => (
-                      <Table.Tr key={link.id}>
-                        <Table.Td className="rt-id">{link.link_order}</Table.Td>
-                        <Table.Td className="rt-nowrap">{formatText(link.file_type)}</Table.Td>
-                        <Table.Td className="rt-num">{link.formatted_size || formatBytes(link.size_bytes)}</Table.Td>
-                        <Table.Td>
-                          <StatusBadge value={link.status} />
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap={4} wrap="nowrap">
-                            <Text size="xs" className="rt-mono rt-nowrap" title={link.mega_url}>
-                              {previewUrl(link.mega_url, 22)}
-                            </Text>
-                            <CopyButton value={link.mega_url} timeout={1500}>
-                              {({ copied, copy }) => (
-                                <Tooltip label={copied ? 'Copied' : 'Copy URL'}>
-                                  <ActionIcon size="sm" variant="subtle" color={copied ? 'green' : 'gray'} onClick={copy} aria-label="Copy URL">
-                                    {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
-                                  </ActionIcon>
-                                </Tooltip>
-                              )}
-                            </CopyButton>
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              </TableWrap>
+              <RecordLinks links={record.links} />
             )}
           </Panel>
         </div>

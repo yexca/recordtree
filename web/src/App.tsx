@@ -16,7 +16,7 @@ const Downloads = lazy(() => import('./pages/Downloads'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Maintenance = lazy(() => import('./pages/Maintenance'));
 
-export type Navigate = (target: string) => void;
+export type Navigate = (target: string, options?: { replace?: boolean }) => void;
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash);
@@ -31,9 +31,16 @@ function useHashRoute() {
     return () => window.removeEventListener('hashchange', onChange);
   }, []);
 
-  const navigate = useCallback<Navigate>((target) => {
+  /** Pushes a history entry, or with `replace` rewrites the current one (e.g. while typing a filter). */
+  const navigate = useCallback<Navigate>((target, options) => {
     const next = `#${target.startsWith('/') ? target : `/${target}`}`;
-    if (window.location.hash !== next) window.location.hash = next;
+    if (window.location.hash === next) return;
+    if (options?.replace) {
+      window.history.replaceState(window.history.state, '', next);
+      setHash(next);
+    } else {
+      window.location.hash = next;
+    }
   }, []);
 
   /** Returns to the previous in-app view when there is one, otherwise to `fallback`. */
@@ -52,7 +59,12 @@ function renderPage(route: Route, navigate: Navigate, back: (fallback: string) =
   const openRecord = (id: number | string) => navigate(recordHref(id));
   switch (route.name) {
     case 'records':
-      return <Records onOpenRecord={openRecord} />;
+      return (
+        <Records
+          query={route.query}
+          onQueryChange={(query, options) => navigate(query ? `/records?${query}` : '/records', options)}
+        />
+      );
     case 'record':
       return <RecordDetail key={route.recordId} idOrKey={route.recordId ?? ''} onBack={() => back('/records')} />;
     case 'actors':

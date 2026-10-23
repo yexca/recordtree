@@ -80,6 +80,37 @@ export function LinkProgress({ completed, total }: { completed: number; total: n
   );
 }
 
+/** Link progress whose bar color carries the record's download status, replacing a separate status badge. */
+export function RecordProgress({
+  completed,
+  total,
+  status,
+}: {
+  completed: number;
+  total: number;
+  status: DownloadedStatus;
+}) {
+  const label = downloadedLabels[status] ?? status;
+  if (total === 0) {
+    return (
+      <span className="rt-progress-empty" title="No active links">
+        {label}
+      </span>
+    );
+  }
+  const ratio = Math.min(1, completed / total);
+  return (
+    <div className="rt-links" title={`${label} · ${completed} of ${total} active links downloaded`}>
+      <div className="rt-links-bar">
+        <span style={{ width: `${ratio * 100}%`, background: toneVar[downloadedTone[status]] }} />
+      </div>
+      <span className="rt-links-text" data-status={status}>
+        {completed}/{total}
+      </span>
+    </div>
+  );
+}
+
 const COVERAGE_ORDER: DownloadedStatus[] = ['all', 'partial', 'none', 'unknown'];
 
 /** Stacked status meter for record download coverage, with a labelled legend. */

@@ -23,9 +23,9 @@ http://127.0.0.1:7647
 The sidebar groups pages into Overview, Library, Transfers, and System. Running download and import jobs show a live count next to their page. The sidebar also has a light/dark/system theme switch and an **Open record** box: type a record ID or source key and press Enter (press `/` anywhere to focus it).
 
 - Dashboard: database totals, download coverage, recent downloads and imports, and a banner while background jobs run.
-- Records: one search page for title, record ID, actor, platform, delivery date range, and download status (complete, partial, not downloaded, no links, or pending links). Old `#/search` links open this page.
+- Records: one search page. The search box filters titles as you type (type `#123` to find a record by ID); **Filters** adds actor, platform, delivery date range, and file type, shown as removable chips. Status tabs (all, pending, complete, partial, not downloaded, no links) show how many records match each. Click a column header to sort. Selecting a row opens the record in a side drawer next to the list (an overlay on narrower screens), where clicking the actor or platform filters the list. The filters, sort, page, and open record are kept in the URL, so Back/Forward, reloads, and shared links return to the same view. Old `#/search` links open this page.
 - Actors and Platforms: a searchable directory (by name or ID) with a workspace for the selected entry: coverage, a filterable record list, and inline record detail. On the Actors page, **Queue downloads** starts one background job for the actor's newest records that still have undownloaded links.
-- Record detail: metadata, active links (with copy buttons), and the download planner.
+- Record detail: metadata, active links (with copy buttons), and the download planner. It opens as a drawer from Records; the drawer's expand button opens the full page.
 - Downloads: live MEGAcmd output for active jobs, plus history filtered by status. Select a row to open its files, output log, and resume action.
 - Import: upload Excel, legacy JSON, or legacy SQLite files, follow background progress, and open any past import to see its row errors.
 - Settings: download folder template (with a live example path), disk-space safety limits, `.par2` default, and the MEGAcmd account.

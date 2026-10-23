@@ -293,6 +293,26 @@ export interface RecordPage {
   total_pages: number;
 }
 
+export type RecordSort =
+  | 'delivered_desc'
+  | 'delivered_asc'
+  | 'size_desc'
+  | 'size_asc'
+  | 'id_desc'
+  | 'id_asc'
+  | 'title_asc'
+  | 'title_desc';
+
+/** Record counts per download status for a filter set; `pending` is partial + none. */
+export interface RecordStatusCounts {
+  total: number;
+  all: number;
+  partial: number;
+  none: number;
+  unknown: number;
+  pending: number;
+}
+
 export interface LinkSummary {
   id: number;
   link_order: number;
