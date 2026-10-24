@@ -19,6 +19,10 @@ web = [
     "python-multipart",
     "uvicorn[standard]",
 ]
+
+# Installed by `uv sync` unless it is given --no-dev. It repeats the web extra
+# so a plain sync can run every test.
+[dependency-groups]
 dev = [
     "fastapi",
     "httpx2",

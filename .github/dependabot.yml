@@ -1,7 +1,7 @@
 # Toolchain majors (Python, Node) are pinned in .python-version, .nvmrc, and
 # the Dockerfile stages; upgrade them by hand in one change. Python packages
-# are not listed: pyproject.toml declares unpinned ranges that Dependabot
-# cannot bump, and security alerts cover them separately.
+# keep the unpinned ranges in pyproject.toml; Dependabot updates the versions
+# that uv.lock pins.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -54,4 +54,17 @@ updates:
       react:
         patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      python-minor-and-patch:
         update-types: [minor, patch]

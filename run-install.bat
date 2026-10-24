@@ -1,70 +1,46 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 
-set "PYTHON_VERSION=3.12.10"
+set "UV_VERSION=0.13.5"
 set "ROOT_DIR=%~dp0"
 set "ROOT_DIR=%ROOT_DIR:~0,-1%"
 set "ENV_DIR=%ROOT_DIR%\env"
 
-set "LOCAL_PYTHON_DIR=%ENV_DIR%\python"
-set "LOCAL_PYTHON=%LOCAL_PYTHON_DIR%\python.exe"
+set "LOCAL_UV_DIR=%ENV_DIR%\uv"
+set "LOCAL_UV=%LOCAL_UV_DIR%\uv.exe"
 set "VENV_DIR=%ROOT_DIR%\.venv"
 set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
 set "RECORDTREE_EXE=%VENV_DIR%\Scripts\recordtree.exe"
-set "PYTHON_INSTALLER=%ENV_DIR%\python-%PYTHON_VERSION%-amd64.exe"
-set "PYTHON_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-amd64.exe"
+set "UV_INSTALLER_URL=https://astral.sh/uv/%UV_VERSION%/install.ps1"
+
+rem A Python that uv has to download goes into env\python, next to env\uv.
+set "UV_PYTHON_INSTALL_DIR=%ENV_DIR%\python"
 
 echo [RecordTree] Preparing local environment...
 if not exist "%ENV_DIR%" mkdir "%ENV_DIR%"
 
-if exist "%LOCAL_PYTHON%" (
-    set "BASE_PYTHON=%LOCAL_PYTHON%"
-    goto :create_venv
+if exist "%LOCAL_UV%" (
+    set "UV=%LOCAL_UV%"
+    goto :sync
 )
 
-for /f "delims=" %%P in ('py -3 -c "import sys; print(sys.executable if sys.version_info >= (3, 11) else '')" 2^>nul') do set "BASE_PYTHON=%%P"
-if not defined BASE_PYTHON (
-    for /f "delims=" %%P in ('python -c "import sys; print(sys.executable if sys.version_info >= (3, 11) else '')" 2^>nul') do set "BASE_PYTHON=%%P"
-)
-if defined BASE_PYTHON echo [RecordTree] Found Python 3.11+: %BASE_PYTHON%
-if defined BASE_PYTHON goto :create_venv
+for /f "delims=" %%P in ('where uv 2^>nul') do if not defined UV set "UV=%%P"
+if defined UV echo [RecordTree] Found uv: %UV%
+if defined UV goto :sync
 
-echo [RecordTree] Python 3.11+ was not found. Installing Python %PYTHON_VERSION% into env\python...
-call :download_python || exit /b 1
+echo [RecordTree] uv was not found. Installing uv %UV_VERSION% into env\uv...
+call :install_uv || exit /b 1
+set "UV=%LOCAL_UV%"
 
-start /wait "" "%PYTHON_INSTALLER%" /quiet InstallAllUsers=0 TargetDir="%LOCAL_PYTHON_DIR%" Include_pip=1 Include_launcher=0 PrependPath=0 Shortcuts=0 Include_test=0 Include_tcltk=0 SimpleInstall=1
-if errorlevel 1 (
-    echo [RecordTree] Python installer failed.
-    exit /b 1
-)
-
-if not exist "%LOCAL_PYTHON%" (
-    echo [RecordTree] Python installer completed, but python.exe was not found at:
-    echo %LOCAL_PYTHON%
-    exit /b 1
-)
-if exist "%PYTHON_INSTALLER%" del /q "%PYTHON_INSTALLER%"
-
-set "BASE_PYTHON=%LOCAL_PYTHON%"
-
-:create_venv
-if not exist "%VENV_PYTHON%" (
-    echo [RecordTree] Creating virtual environment in .venv...
-    "%BASE_PYTHON%" -m venv "%VENV_DIR%"
-    if errorlevel 1 (
-        echo [RecordTree] Failed to create virtual environment.
-        exit /b 1
-    )
-) else (
-    echo [RecordTree] Reusing existing virtual environment.
-)
-
+:sync
+rem uv uses the Python pinned in .python-version, installing it when missing,
+rem and builds .venv from uv.lock.
 echo [RecordTree] Installing project dependencies locally...
-"%VENV_PYTHON%" -m pip install --upgrade pip
-if errorlevel 1 exit /b 1
-
-"%VENV_PYTHON%" -m pip install -e "%ROOT_DIR%[dev]"
-if errorlevel 1 exit /b 1
+"%UV%" sync --locked --project "%ROOT_DIR%"
+if errorlevel 1 (
+    echo [RecordTree] uv sync failed.
+    exit /b 1
+)
 
 echo [RecordTree] Initializing config and database...
 "%RECORDTREE_EXE%" init
@@ -77,16 +53,16 @@ echo Run: "%RECORDTREE_EXE%" doctor
 echo Run: "%RECORDTREE_EXE%" import "%ROOT_DIR%\files\Record Tree 260605.xlsx"
 exit /b 0
 
-:download_python
-if exist "%PYTHON_INSTALLER%" (
-    echo [RecordTree] Reusing downloaded installer: %PYTHON_INSTALLER%
-    exit /b 0
-)
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_INSTALLER%'"
+:install_uv
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $env:UV_UNMANAGED_INSTALL = '%LOCAL_UV_DIR%'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-RestMethod -Uri '%UV_INSTALLER_URL%' | Invoke-Expression"
 if errorlevel 1 (
-    echo [RecordTree] Failed to download Python installer:
-    echo %PYTHON_URL%
+    echo [RecordTree] Failed to install uv from:
+    echo %UV_INSTALLER_URL%
+    exit /b 1
+)
+if not exist "%LOCAL_UV%" (
+    echo [RecordTree] The uv installer completed, but uv.exe was not found at:
+    echo %LOCAL_UV%
     exit /b 1
 )
 exit /b 0

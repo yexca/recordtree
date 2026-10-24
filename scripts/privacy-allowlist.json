@@ -10,6 +10,21 @@
       "url": "https://raw.githubusercontent.com/yexca/recordtree/main/docker-compose.yml",
       "files": ["README.md", "README.zh-CN.md", "docs/user-guide/docker.md"],
       "reason": "Public download location of this repository's Compose file for running the published image."
+    },
+    {
+      "url": "https://pypi.org/simple",
+      "files": ["uv.lock"],
+      "reason": "Public PyPI index that uv.lock records as the source of every locked Python package."
+    },
+    {
+      "url": "https://files.pythonhosted.org/packages/**",
+      "files": ["uv.lock"],
+      "reason": "Public PyPI file host of the locked Python package distributions."
+    },
+    {
+      "url": "https://astral.sh/uv/*/install.ps1",
+      "files": ["run-install.bat"],
+      "reason": "Official versioned uv installer that run-install.bat runs when uv is not on PATH."
     }
   ]
 }

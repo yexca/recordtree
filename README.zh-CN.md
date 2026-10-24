@@ -40,6 +40,8 @@ Windows 下可以运行：
 run-install.bat
 ```
 
+如果 `PATH` 中没有 uv，它会把 uv 安装到 `env/uv`，然后按 `.python-version` 中的 Python 版本，根据 `uv.lock` 创建 `.venv`。
+
 然后初始化并检查环境：
 
 ```powershell
@@ -63,4 +65,4 @@ run-install.bat
 - 不要提交真实导出、下载文件、MEGA 凭据或运行时数据库。
 - 敏感的手动测试资料请放在 `real_test/`，该目录已被 Git 忽略。
 - `config/` 保存数据库、日志；Docker WebUI 运行时还在 `config/mega` 中保存 MEGAcmd 登录会话。请把它当作敏感数据。
-- `env/` 只存放可以重新生成的文件，例如 `run-install.bat` 安装的 Python 运行时。删除它不会丢失数据。
+- `env/` 只存放可以重新生成的文件，例如 `run-install.bat` 安装的 uv 和 Python 运行时。删除它不会丢失数据。

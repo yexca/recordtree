@@ -1,11 +1,7 @@
 .PHONY: python-install python-lint python-test web-install web-build web-dev scripts-test sensitive-check actionlint docker-build dependency-audit
 .PHONY: ci-style ci-python ci-web ci
 
-ifeq ($(OS),Windows_NT)
-PYTHON ?= py -3
-else
-PYTHON ?= python3
-endif
+UV ?= uv
 NPM ?= npm
 NODE ?= node
 GO ?= go
@@ -13,14 +9,16 @@ DOCKER ?= docker
 DOCKER_IMAGE ?= recordtree:dev
 ACTIONLINT_VERSION ?= v1.7.12
 
+# uv.lock pins every Python package. --locked fails instead of rewriting the
+# lock when it no longer matches pyproject.toml; run `uv lock` to update it.
 python-install:
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(UV) sync --locked
 
 python-lint:
-	$(PYTHON) -m ruff check recordtree tests scripts
+	$(UV) run --locked ruff check recordtree tests scripts
 
 python-test:
-	$(PYTHON) -m pytest
+	$(UV) run --locked pytest
 
 web-install:
 	cd web && $(NPM) ci

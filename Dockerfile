@@ -1,3 +1,5 @@
+FROM ghcr.io/astral-sh/uv:0.13.5 AS uv
+
 FROM node:24-bookworm AS frontend
 
 WORKDIR /app/web
@@ -8,9 +10,16 @@ RUN npm run build
 
 FROM python:3.12-slim-bookworm
 
+# uv builds the environment from uv.lock with the image's Python and never
+# downloads another one.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    UV_NO_CACHE=1 \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_COMPILE_BYTECODE=1 \
+    PATH="/app/.venv/bin:${PATH}"
+
+COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -22,11 +31,16 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+# Dependencies install before the source is copied, so a source change keeps
+# their layer. The project installs editable, because the API serves web/dist
+# relative to the source tree.
+COPY pyproject.toml uv.lock README.md ./
+RUN uv sync --locked --no-dev --extra web --no-install-project
+
 COPY recordtree ./recordtree
 COPY --from=frontend /app/web/dist ./web/dist
 
-RUN python -m pip install -e ".[web]"
+RUN uv sync --locked --no-dev --extra web
 
 RUN mkdir -p config/logs downloads cache/uploads
 

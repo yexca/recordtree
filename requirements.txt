@@ -1,4 +1,0 @@
-openpyxl
-rich
-typer
-pytest

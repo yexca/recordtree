@@ -1,14 +1,14 @@
 name: Set up Python
-description: Install the Python version pinned in .python-version, which matches the runtime image, and the dev extras.
+description: Install uv, the Python version pinned in .python-version, which matches the runtime image, and the locked dev environment.
 runs:
   using: composite
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+    # uv reads .python-version and installs that Python itself.
+    - name: Set up uv
+      uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
       with:
-        python-version-file: .python-version
-        cache: pip
-        cache-dependency-path: pyproject.toml
-    - name: Install package with dev extras
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+    - name: Install the locked environment
       shell: bash
       run: make python-install

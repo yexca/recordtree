@@ -41,6 +41,8 @@ On Windows, run:
 run-install.bat
 ```
 
+It installs uv into `env/uv` when uv is not on `PATH`, then builds `.venv` from `uv.lock` with the Python version in `.python-version`.
+
 Then initialize and check the environment:
 
 ```powershell
@@ -64,15 +66,15 @@ Then initialize and check the environment:
 - Do not commit real exports, downloaded files, MEGA credentials, or runtime databases.
 - Keep sensitive manual-test data under `real_test/`; that path is ignored by Git.
 - `config/` holds the database, logs, and, in Docker WebUI runs, the MEGAcmd login session under `config/mega`. Treat it as sensitive.
-- `env/` holds only files that can be regenerated, such as the Python runtime that `run-install.bat` installs. Deleting it loses no data.
+- `env/` holds only files that can be regenerated, such as the uv binary and the Python runtime that `run-install.bat` installs. Deleting it loses no data.
 
 ## Development
 
-Install local development dependencies:
+Python dependencies are managed with uv. Install the locked development environment and run the tests:
 
 ```bash
-python -m pip install -e ".[web,dev]"
-pytest
+uv sync
+uv run pytest
 ```
 
 Build the frontend:

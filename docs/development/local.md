@@ -1,21 +1,29 @@
 # Local Development
 
-Install Python dependencies:
+Python dependencies are managed with uv. `pyproject.toml` declares them, `uv.lock` pins every version, and `.python-version` pins the Python version, which uv installs when it is missing.
+
+Create `.venv` with the project and the `dev` dependency group, which also holds the web extra's packages:
 
 ```bash
-python -m pip install -e ".[web,dev]"
+uv sync
 ```
 
 Run tests:
 
 ```bash
-pytest
+uv run pytest
+```
+
+After changing dependencies in `pyproject.toml`, update the lock and commit `uv.lock` with the change:
+
+```bash
+uv lock
 ```
 
 Start the FastAPI backend:
 
 ```bash
-uvicorn recordtree.web.api:app --host 127.0.0.1 --port 7647
+uv run uvicorn recordtree.web.api:app --host 127.0.0.1 --port 7647
 ```
 
 Start the Vite frontend in another terminal:

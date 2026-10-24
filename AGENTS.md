@@ -92,9 +92,10 @@ runs the same targets. Prefer a target over reconstructing its command.
 | `Dockerfile`, `.dockerignore`, runtime layout | `make docker-build` |
 | Everything Actions runs | `make ci` |
 
-- Run `make python-install` once to install the package with dev extras. On
-  Windows the Makefile calls `py -3`; pass `PYTHON=...` to pick another
-  interpreter.
+- Python environments are managed with uv. Run `make python-install` once to
+  build `.venv` from `uv.lock`; the Python targets run through `uv run
+  --locked`, so they fail when `uv.lock` is out of date. After changing
+  dependencies in `pyproject.toml`, run `uv lock` and commit `uv.lock`.
 - Keep validation proportional to the change.
 - Redirect the output of slow targets to a log file outside tracked paths and
   read that file instead of re-running the target to see another part.

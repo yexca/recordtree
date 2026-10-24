@@ -17,13 +17,13 @@ make python-test
 Run one file:
 
 ```bash
-pytest tests/test_import_service.py
+uv run pytest tests/test_import_service.py
 ```
 
 Run focused tests:
 
 ```bash
-pytest tests/test_download.py -k par2
+uv run pytest tests/test_download.py -k par2
 ```
 
 ## Fixture Principles

@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "demo",
-      "runtimeExecutable": "py",
+      "runtimeExecutable": "uv",
       "runtimeArgs": [
-        "-3.14",
+        "run",
+        "python",
         "scripts/seed_demo.py",
         "--serve",
         "--port",
@@ -15,10 +16,9 @@
     },
     {
       "name": "api-dev",
-      "runtimeExecutable": "py",
+      "runtimeExecutable": "uv",
       "runtimeArgs": [
-        "-3.14",
-        "-m",
+        "run",
         "uvicorn",
         "recordtree.web.api:app",
         "--host",
