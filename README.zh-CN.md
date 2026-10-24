@@ -16,6 +16,8 @@ RecordTreeDownloader SQLite 是一个本地优先的 Record Tree 元数据管理
 
 ### Docker WebUI
 
+不克隆仓库、直接运行已发布的镜像，请参考[运行已发布的镜像](docs/user-guide/docker.md#run-the-published-image)。在仓库克隆中构建并启动：
+
 ```bash
 docker compose build
 docker compose up -d
@@ -60,4 +62,4 @@ run-install.bat
 
 - 不要提交真实导出、下载文件、MEGA 凭据或运行时数据库。
 - 敏感的手动测试资料请放在 `real_test/`，该目录已被 Git 忽略。
-- Docker 中的 MEGAcmd 登录状态保存在 `megacmd-home` 命名卷中。
+- Docker WebUI 运行时，MEGAcmd 登录状态保存在主机目录 `env/megacmd-home` 中。

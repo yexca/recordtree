@@ -17,6 +17,8 @@ The application does not crawl remote sources and does not store MEGA credential
 
 ### Docker WebUI
 
+To run the published image without cloning the repository, follow [Run the published image](docs/user-guide/docker.md#run-the-published-image). From a clone, build and start it with:
+
 ```bash
 docker compose build
 docker compose up -d
@@ -61,7 +63,7 @@ Then initialize and check the environment:
 
 - Do not commit real exports, downloaded files, MEGA credentials, or runtime databases.
 - Keep sensitive manual-test data under `real_test/`; that path is ignored by Git.
-- In Docker WebUI runs, MEGAcmd login state is stored under `env/megacmd-home`.
+- In Docker WebUI runs, MEGAcmd login state is stored in the host directory `env/megacmd-home`.
 - Download output logs are stored under `logs/downloads/`.
 
 ## Development
