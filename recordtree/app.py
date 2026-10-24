@@ -55,6 +55,11 @@ from .path_templates import allowed_download_template_variables, normalize_downl
 from .repositories import ActorRepository, DownloadRepository, ImportRepository
 from .search import SearchService, normalize_limit, normalize_page
 
+XLSX_EXTENSIONS = frozenset({".xlsx", ".xlsm"})
+LEGACY_DB_EXTENSIONS = frozenset({".db", ".sqlite", ".sqlite3"})
+JSON_EXTENSIONS = frozenset({".json"})
+IMPORT_FILE_EXTENSIONS = XLSX_EXTENSIONS | LEGACY_DB_EXTENSIONS | JSON_EXTENSIONS
+
 
 class RecordTreeApp:
     """Application service layer for CLI use cases."""
@@ -66,6 +71,7 @@ class RecordTreeApp:
         app_config.database_path.parent.mkdir(parents=True, exist_ok=True)
         app_config.downloads_dir.mkdir(parents=True, exist_ok=True)
         app_config.logs_dir.mkdir(parents=True, exist_ok=True)
+        app_config.cache_dir.mkdir(parents=True, exist_ok=True)
 
         conn = db.connect(app_config.database_path)
         try:
@@ -83,6 +89,7 @@ class RecordTreeApp:
             database_path=app_config.database_path,
             downloads_dir=app_config.downloads_dir,
             logs_dir=app_config.logs_dir,
+            cache_dir=app_config.cache_dir,
             schema_version=schema_version["value"] if schema_version else "unknown",
         )
 
@@ -119,7 +126,7 @@ class RecordTreeApp:
                 else:
                     checks.append(DoctorCheck("schema", "pass", str(version["value"])))
 
-            for name, path in (("downloads_dir", app_config.downloads_dir), ("logs_dir", app_config.logs_dir)):
+            for name, path in _runtime_dirs(app_config):
                 checks.append(_check_writable_dir(name, path))
 
             whoami = _check_executable("mega-whoami", app_config.mega_whoami)
@@ -394,9 +401,17 @@ class RecordTreeApp:
             else:
                 checks.append(DoctorCheck("schema", "pass", str(version["value"])))
 
-        for name, path in (("downloads_dir", app_config.downloads_dir), ("logs_dir", app_config.logs_dir)):
+        for name, path in _runtime_dirs(app_config):
             checks.append(_check_writable_dir(name, path))
         return checks
+
+    def upload_dir(self) -> Path:
+        """Directory under the cache where WebUI uploads are stored before import."""
+        config_path = config_module.ensure_config(config_module.default_config_path())
+        app_config = config_module.load_config(config_path)
+        upload_dir = app_config.cache_dir / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        return upload_dir
 
     def backup_database(self) -> BackupSummary:
         config_path = config_module.ensure_config(config_module.default_config_path())
@@ -1137,11 +1152,11 @@ class RecordTreeApp:
 
     def _create_importer(self, path: Path):
         extension = path.suffix.casefold()
-        if extension in {".xlsx", ".xlsm"}:
+        if extension in XLSX_EXTENSIONS:
             return "xlsx", ExcelImporter()
-        if extension in {".db", ".sqlite", ".sqlite3"}:
+        if extension in LEGACY_DB_EXTENSIONS:
             return "legacy_db", LegacyDbImporter()
-        if extension == ".json":
+        if extension in JSON_EXTENSIONS:
             return "json", JsonImporter()
         raise ValidationError(f"Unsupported import file extension: {extension}")
 
@@ -1328,6 +1343,14 @@ def _export_import_errors(conn, import_id: int, logs_dir: Path) -> Path:
                 ]
             )
     return path
+
+
+def _runtime_dirs(app_config) -> tuple[tuple[str, Path], ...]:
+    return (
+        ("downloads_dir", app_config.downloads_dir),
+        ("logs_dir", app_config.logs_dir),
+        ("cache_dir", app_config.cache_dir),
+    )
 
 
 def _check_writable_dir(name: str, path: Path) -> DoctorCheck:

@@ -11,7 +11,7 @@ from fastapi import FastAPI, File, Query, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from recordtree.app import RecordTreeApp
+from recordtree.app import IMPORT_FILE_EXTENSIONS, RecordTreeApp
 from recordtree.exceptions import ConfigError, NotFoundError, RecordTreeError, ValidationError
 
 from .schemas import ActorDownloadRequest, DownloadPlanRequest, DownloadRequest, MegaLoginRequest, SettingsUpdateRequest
@@ -31,8 +31,6 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="RecordTree API", lifespan=lifespan)
 job_manager = JobManager()
-UPLOAD_DIR = Path("files/uploads")
-ALLOWED_IMPORT_EXTENSIONS = {".xlsx", ".xlsm", ".json", ".db", ".sqlite", ".sqlite3"}
 SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._ -]+")
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 
@@ -69,12 +67,10 @@ def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
         raise ValidationError("Uploaded file must have a filename.")
     filename = _safe_filename(file.filename)
     extension = Path(filename).suffix.casefold()
-    if extension not in ALLOWED_IMPORT_EXTENSIONS:
-        allowed = ", ".join(sorted(ALLOWED_IMPORT_EXTENSIONS))
+    if extension not in IMPORT_FILE_EXTENSIONS:
+        allowed = ", ".join(sorted(IMPORT_FILE_EXTENSIONS))
         raise ValidationError(f"Unsupported import file extension: {extension or '(none)'}. Allowed: {allowed}")
-    upload_dir = UPLOAD_DIR.resolve()
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    source_path = upload_dir / f"{_short_token()}_{filename}"
+    source_path = RecordTreeApp().upload_dir() / f"{_short_token()}_{filename}"
     with source_path.open("wb") as handle:
         shutil.copyfileobj(file.file, handle)
     job = job_manager.start_import(source_path)

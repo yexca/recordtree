@@ -347,7 +347,7 @@ async def test_maintenance_endpoints_report_and_run_safe_actions(
     async with _test_client() as client:
         summary = (await client.get("/api/maintenance/summary")).json()
         assert summary["ok"] is True
-        assert {check["name"] for check in summary["checks"]} >= {"config", "database", "schema", "downloads_dir", "logs_dir"}
+        assert {check["name"] for check in summary["checks"]} >= {"config", "database", "schema", "downloads_dir", "logs_dir", "cache_dir"}
         assert summary["stats"]["total_record_groups"] == 1
         assert summary["database_size_bytes"] > 0
         assert summary["latest_backup"] is None
@@ -460,7 +460,7 @@ async def test_import_upload_creates_background_job_and_reports_result(
         assert job["result"]["source_type"] == "json"
         assert job["result"]["status"] == "completed"
         assert job["result"]["stats"]["inserted_groups"] == 1
-        assert Path(job["result"]["source_path"]).parent == (tmp_path / "files" / "uploads").resolve()
+        assert Path(job["result"]["source_path"]).parent == (tmp_path / "cache" / "uploads").resolve()
         assert ".." not in Path(job["result"]["source_path"]).name
 
         events = await client.get(f"/api/jobs/{job_id}/events")
@@ -482,7 +482,7 @@ async def test_import_upload_rejects_unsupported_extension_before_saving(
     assert response.status_code == 400
     assert response.json()["error"] == "ValidationError"
     assert "Unsupported import file extension" in response.json()["detail"]
-    assert not (tmp_path / "files" / "uploads").exists()
+    assert not (tmp_path / "cache" / "uploads").exists()
 
 
 async def test_import_history_detail_and_errors_endpoints(

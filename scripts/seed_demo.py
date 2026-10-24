@@ -186,7 +186,7 @@ def main() -> None:
     if args.reset and root.exists():
         shutil.rmtree(root)
     root.mkdir(parents=True, exist_ok=True)
-    # RecordTree resolves config/, downloads/ and logs/ from the working directory.
+    # RecordTree resolves config/, downloads/ and cache/ from the working directory.
     os.chdir(root)
 
     if not (root / "config" / "recordtree.sqlite3").exists():

@@ -69,5 +69,5 @@ recordtree list-undownloaded --limit 20
 If the import completed with errors, review:
 
 ```text
-logs/import_<import_id>_errors.csv
+config/logs/import_<import_id>_errors.csv
 ```

@@ -110,7 +110,7 @@ working-tree diff against `HEAD` plus untracked files for:
 - private local paths under a Windows user profile or a home directory;
 - non-reserved service URLs and non-loopback IPv4 addresses;
 - files that `.gitignore` matches (databases, `config/`, `downloads/`,
-  `logs/`, and other runtime data), and binary files such as Excel exports.
+  `cache/`, and other runtime data), and binary files such as Excel exports.
 
 Use reserved domains (`example.com`, `.test`, `.invalid`) and obviously
 synthetic names in examples. A public URL the code or images really need goes

@@ -62,4 +62,5 @@ run-install.bat
 
 - 不要提交真实导出、下载文件、MEGA 凭据或运行时数据库。
 - 敏感的手动测试资料请放在 `real_test/`，该目录已被 Git 忽略。
-- Docker WebUI 运行时，MEGAcmd 登录状态保存在主机目录 `env/megacmd-home` 中。
+- `config/` 保存数据库、日志；Docker WebUI 运行时还在 `config/mega` 中保存 MEGAcmd 登录会话。请把它当作敏感数据。
+- `env/` 只存放可以重新生成的文件，例如 `run-install.bat` 安装的 Python 运行时。删除它不会丢失数据。

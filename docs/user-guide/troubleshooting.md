@@ -14,7 +14,7 @@ recordtree list-undownloaded --actor-id <actor-id>
 
 - Missing config or database: run `recordtree init`.
 - Unsupported import extension: use `.xlsx`, `.xlsm`, `.json`, `.db`, `.sqlite`, or `.sqlite3`.
-- Import row errors: check `logs/import_<import_id>_errors.csv`.
+- Import row errors: check `config/logs/import_<import_id>_errors.csv`.
 - MEGAcmd missing: install MEGAcmd and ensure `mega-get` and `mega-whoami` are on `PATH`, or configure executable paths in `config/config.toml`.
 - Not logged in: run `mega-login`, then run `recordtree doctor`.
 - Insufficient disk space: change `--output`, free space, or adjust the safety margin in `config/config.toml`.

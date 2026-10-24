@@ -8,7 +8,7 @@ from rich.progress import BarColumn, Progress, ProgressColumn, Task, TaskProgres
 from rich.text import Text
 from rich.table import Table
 
-from .app import RecordTreeApp
+from .app import IMPORT_FILE_EXTENSIONS, RecordTreeApp
 from .exceptions import ConfigError, NotFoundError, NotImplementedFeatureError, RecordTreeError, ValidationError
 from .models import (
     ActorSummary,
@@ -65,6 +65,7 @@ def init() -> None:
         table.add_row("Database", str(result.database_path))
         table.add_row("Downloads", str(result.downloads_dir))
         table.add_row("Logs", str(result.logs_dir))
+        table.add_row("Cache", str(result.cache_dir))
         table.add_row("Schema", result.schema_version)
         console.print(table)
 
@@ -85,9 +86,16 @@ def doctor() -> None:
 
 
 @app.command(name="import")
-def import_command(path: Path) -> None:
+def import_command(
+    path: Path | None = typer.Argument(
+        None,
+        help="File to import. Without it, a file picker opens, or you are asked for the full path.",
+    ),
+) -> None:
     """Import a Record Tree workbook, JSON export, or legacy SQLite DB."""
     try:
+        if path is None:
+            path = _choose_import_file()
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
@@ -293,6 +301,39 @@ def download(
             raise typer.Exit(5)
         if result.status == "failed":
             raise typer.Exit(10)
+
+
+def _choose_import_file() -> Path:
+    selected = _open_file_dialog()
+    if selected is None:
+        selected = typer.prompt("Full path of the file to import").strip().strip('"')
+    if not selected:
+        raise ValidationError("No import file selected.")
+    return Path(selected).expanduser()
+
+
+def _open_file_dialog() -> str | None:
+    """Return the picked path, "" when the picker is cancelled, or None when no picker can open."""
+    try:
+        import tkinter
+        from tkinter import filedialog
+    except ImportError:
+        return None
+    try:
+        root = tkinter.Tk()
+    except tkinter.TclError:
+        return None
+    try:
+        root.withdraw()
+        root.attributes("-topmost", True)
+        patterns = " ".join(f"*{extension}" for extension in sorted(IMPORT_FILE_EXTENSIONS))
+        return filedialog.askopenfilename(
+            parent=root,
+            title="Choose a file to import",
+            filetypes=[("Record Tree data", patterns), ("All files", "*.*")],
+        )
+    finally:
+        root.destroy()
 
 
 def _dash(value: object | None) -> str:

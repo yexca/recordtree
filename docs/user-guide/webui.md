@@ -49,5 +49,5 @@ Downloads run as background jobs. The UI polls job status and displays captured 
 Download output logs are written under:
 
 ```text
-logs/downloads/download_<download_id>.log
+config/logs/downloads/download_<download_id>.log
 ```

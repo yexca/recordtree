@@ -223,7 +223,7 @@ def test_download_forwards_megacmd_output_callback(
 
     assert result.status == "completed"
     assert output_chunks == ["downloading\r100%\n"]
-    log_path = tmp_path / "logs" / "downloads" / f"download_{result.download_id}.log"
+    log_path = tmp_path / "config" / "logs" / "downloads" / f"download_{result.download_id}.log"
     with log_path.open("r", encoding="utf-8", newline="") as handle:
         assert handle.read() == "downloading\r100%\n"
 

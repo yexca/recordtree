@@ -63,8 +63,8 @@ Then initialize and check the environment:
 
 - Do not commit real exports, downloaded files, MEGA credentials, or runtime databases.
 - Keep sensitive manual-test data under `real_test/`; that path is ignored by Git.
-- In Docker WebUI runs, MEGAcmd login state is stored in the host directory `env/megacmd-home`.
-- Download output logs are stored under `logs/downloads/`.
+- `config/` holds the database, logs, and, in Docker WebUI runs, the MEGAcmd login session under `config/mega`. Treat it as sensitive.
+- `env/` holds only files that can be regenerated, such as the Python runtime that `run-install.bat` installs. Deleting it loses no data.
 
 ## Development
 

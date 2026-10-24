@@ -73,6 +73,7 @@ class InitResult:
     database_path: Path
     downloads_dir: Path
     logs_dir: Path
+    cache_dir: Path
     schema_version: str
 
 

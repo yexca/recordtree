@@ -4,8 +4,7 @@ venv
 config
 env
 downloads
-logs
-files
+cache
 real_test
 __pycache__
 *.py[cod]

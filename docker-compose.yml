@@ -8,8 +8,7 @@ services:
       TZ: Asia/Tokyo
     volumes:
       - ./config:/app/config
+      - ./config/mega:/root/.megaCmd
       - ./downloads:/app/downloads
-      - ./logs:/app/logs
-      - ./files:/app/files
-      - ./env/megacmd-home:/root
+      - ./cache:/app/cache
     restart: unless-stopped

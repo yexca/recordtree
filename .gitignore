@@ -6,14 +6,13 @@ test_output/
 *.sqlite
 *.sqlite3
 record/
-files/
+cache/
 dev_documents/
 real_test/
 config/
 .env
 env/
 downloads/
-logs/
 __pycache__
 *.py[cod]
 .pytest_cache/

@@ -8,22 +8,30 @@ The CLI entry point is `recordtree`.
 recordtree init
 ```
 
-Default runtime paths:
+Default runtime paths, relative to the working directory:
 
 - Config: `config/config.toml`
 - Database: `config/recordtree.sqlite3`
+- Logs: `config/logs/`
+- Import error CSVs: `config/logs/import_<import_id>_errors.csv`
+- Download output logs: `config/logs/downloads/download_<download_id>.log`
+- Database backups: `config/logs/backups/`
 - Downloads: `downloads/`
-- Logs: `logs/`
-- Import error CSVs: `logs/import_<import_id>_errors.csv`
-- Download output logs: `logs/downloads/download_<download_id>.log`
+- Cache: `cache/`, which holds files uploaded through the WebUI under `cache/uploads/` until they are imported
+
+The `[paths]` section of `config/config.toml` sets the logs, downloads, and cache locations.
 
 ## Import Data
 
+Pass the file to import:
+
 ```bash
-recordtree import "files/recordtree-export.xlsx"
-recordtree import files/legacy-record.sqlite3
-recordtree import "files/legacy-record.json"
+recordtree import "D:/exports/recordtree-export.xlsx"
+recordtree import "D:/exports/legacy-record.sqlite3"
+recordtree import "D:/exports/legacy-record.json"
 ```
+
+Without a path, `recordtree import` opens a file picker. Where no picker can open, such as in a container or an SSH session, it asks for the full path of the file instead. Cancelling the picker stops the import.
 
 Recommended import order:
 
@@ -77,4 +85,4 @@ When `--output` is omitted, downloads are stored under the configured downloads 
 
 With the default downloads root, this produces paths like `downloads/Actor Name/123/`.
 
-Each download attempt records item status in SQLite. When MEGAcmd runs, its streamed output is also written to `logs/downloads/download_<download_id>.log`.
+Each download attempt records item status in SQLite. When MEGAcmd runs, its streamed output is also written to `config/logs/downloads/download_<download_id>.log`.

@@ -64,25 +64,31 @@ docker compose exec recordtree-web mega-login
 docker compose exec recordtree-web recordtree doctor
 ```
 
-The host directory `./env/megacmd-home` is mounted at `/root` and stores MEGAcmd login state.
+MEGAcmd keeps its state in `./config/mega`. The directory fills with MEGAcmd's own files as soon as its server starts. After a login it also holds the session, which gives access to the MEGA account without the password, so protect `./config` like a credential. `mega-logout` ends the session and removes it.
 
 ## Persistent Data
 
 The Compose file mounts these host directories:
 
-- `./config:/app/config` (config and SQLite database)
-- `./downloads:/app/downloads`
-- `./logs:/app/logs`
-- `./files:/app/files`
-- `./env/megacmd-home:/root` (MEGAcmd login state)
+- `./config:/app/config`: config, SQLite database, and logs
+- `./config/mega:/root/.megaCmd`: MEGAcmd state and login session
+- `./downloads:/app/downloads`: downloaded files
+- `./cache:/app/cache`: WebUI uploads and other files to import
 
-Runtime data and the MEGAcmd login survive container recreation because these paths live on the host. Download output logs are stored under `./logs/downloads/`.
+Runtime data and the MEGAcmd login survive container recreation because these paths live on the host. The layout inside `config/` and `cache/` follows [Default runtime paths](cli.md#initialize).
+
+## Import From The Shell
+
+The container only sees mounted paths. To import with the CLI, put the file in `./cache` on the host and pass its container path:
+
+```bash
+docker compose exec recordtree-web recordtree import /app/cache/example.json
+```
 
 ## Useful Commands
 
 ```bash
 docker compose logs -f recordtree-web
 docker compose exec recordtree-web recordtree stats
-docker compose exec recordtree-web recordtree import /app/files/example.json
 docker compose down
 ```

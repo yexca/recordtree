@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 import tomllib
 
 from .exceptions import ConfigError
@@ -10,8 +9,8 @@ from .path_templates import DEFAULT_DOWNLOAD_FOLDER_TEMPLATE, normalize_download
 
 DEFAULT_CONFIG_PATH = Path("config/config.toml")
 DEFAULT_DATABASE_PATH = "config/recordtree.sqlite3"
-LEGACY_CONFIG_PATH = Path("env/config.toml")
-LEGACY_DATABASE_PATH = "env/recordtree.sqlite3"
+DEFAULT_LOGS_PATH = "config/logs"
+DEFAULT_CACHE_PATH = "cache"
 
 
 @dataclass(frozen=True)
@@ -19,6 +18,7 @@ class AppConfig:
     database_path: Path
     downloads_dir: Path
     logs_dir: Path
+    cache_dir: Path
     safety_margin_percent: int
     safety_margin_min_mb: int
     include_par2_by_default: bool
@@ -35,7 +35,8 @@ def default_config() -> dict[str, object]:
         "paths": {
             "database": DEFAULT_DATABASE_PATH,
             "downloads": "downloads",
-            "logs": "logs",
+            "logs": DEFAULT_LOGS_PATH,
+            "cache": DEFAULT_CACHE_PATH,
         },
         "download": {
             "safety_margin_percent": 5,
@@ -56,28 +57,7 @@ def default_config() -> dict[str, object]:
 
 
 def default_config_path() -> Path:
-    migrate_legacy_layout()
     return DEFAULT_CONFIG_PATH
-
-
-def migrate_legacy_layout() -> None:
-    """Move config and database from the old env/ layout into config/."""
-    if DEFAULT_CONFIG_PATH.exists() or not LEGACY_CONFIG_PATH.exists():
-        return
-
-    DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    config_text = LEGACY_CONFIG_PATH.read_text(encoding="utf-8")
-    legacy_database = f'database = "{LEGACY_DATABASE_PATH}"'
-    if legacy_database in config_text:
-        for suffix in ("", "-wal", "-shm"):
-            source = Path(LEGACY_DATABASE_PATH + suffix)
-            target = Path(DEFAULT_DATABASE_PATH + suffix)
-            if source.exists() and not target.exists():
-                shutil.move(source, target)
-        config_text = config_text.replace(legacy_database, f'database = "{DEFAULT_DATABASE_PATH}"')
-
-    DEFAULT_CONFIG_PATH.write_text(config_text, encoding="utf-8")
-    LEGACY_CONFIG_PATH.unlink()
 
 
 def ensure_config(path: Path) -> Path:
@@ -108,11 +88,13 @@ def load_config(path: Path | None = None) -> AppConfig:
     database = _string_value(paths, "database", defaults["paths"]["database"])
     downloads = _string_value(paths, "downloads", defaults["paths"]["downloads"])
     logs = _string_value(paths, "logs", defaults["paths"]["logs"])
+    cache = _string_value(paths, "cache", defaults["paths"]["cache"])
 
     return AppConfig(
         database_path=resolve_path(base_dir, database),
         downloads_dir=resolve_path(base_dir, downloads),
         logs_dir=resolve_path(base_dir, logs),
+        cache_dir=resolve_path(base_dir, cache),
         safety_margin_percent=_int_value(
             download,
             "safety_margin_percent",
@@ -154,7 +136,8 @@ def _format_default_config() -> str:
     return f"""[paths]
 database = "{DEFAULT_DATABASE_PATH}"
 downloads = "downloads"
-logs = "logs"
+logs = "{DEFAULT_LOGS_PATH}"
+cache = "{DEFAULT_CACHE_PATH}"
 
 [download]
 safety_margin_percent = 5
@@ -213,6 +196,7 @@ def _format_config(config: AppConfig) -> str:
 database = "{_toml_string(_display_path(config.database_path))}"
 downloads = "{_toml_string(_display_path(config.downloads_dir))}"
 logs = "{_toml_string(_display_path(config.logs_dir))}"
+cache = "{_toml_string(_display_path(config.cache_dir))}"
 
 [download]
 safety_margin_percent = {config.safety_margin_percent}

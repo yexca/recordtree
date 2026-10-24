@@ -74,6 +74,41 @@ def test_cli_unsupported_import_extension_returns_exit_code_2(tmp_path: Path, mo
     assert "Unsupported import file extension" in result.output
 
 
+def test_cli_import_without_path_uses_file_picker(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "picked.txt"
+    source.write_text("not importable", encoding="utf-8")
+    monkeypatch.setattr("recordtree.cli._open_file_dialog", lambda: str(source))
+
+    result = CliRunner().invoke(app, ["import"])
+
+    assert result.exit_code == 2
+    assert "Unsupported import file extension: .txt" in result.output
+
+
+def test_cli_import_without_picker_prompts_for_full_path(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    source = tmp_path / "typed.txt"
+    source.write_text("not importable", encoding="utf-8")
+    monkeypatch.setattr("recordtree.cli._open_file_dialog", lambda: None)
+
+    result = CliRunner().invoke(app, ["import"], input=f'"{source}"\n')
+
+    assert result.exit_code == 2
+    assert "Full path of the file to import" in result.output
+    assert "Unsupported import file extension: .txt" in result.output
+
+
+def test_cli_import_cancelled_picker_returns_exit_code_2(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("recordtree.cli._open_file_dialog", lambda: "")
+
+    result = CliRunner().invoke(app, ["import"])
+
+    assert result.exit_code == 2
+    assert "No import file selected" in result.output
+
+
 def test_cli_missing_info_target_returns_exit_code_3(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     runner = CliRunner()
