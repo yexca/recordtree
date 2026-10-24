@@ -228,7 +228,7 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
                   {filesOpen ? 'Hide' : 'Show'} {plan.selected_links.length} selected file
                   {plan.selected_links.length === 1 ? '' : 's'}
                 </Button>
-                <Collapse in={filesOpen}>
+                <Collapse expanded={filesOpen}>
                   <TableWrap>
                     <Table fz="xs" verticalSpacing={6}>
                       <Table.Tbody>
