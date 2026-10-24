@@ -35,9 +35,14 @@ function jobTitle(job: Job) {
 
 function ActiveJobCard({ job, onOpenRecord }: { job: Job; onOpenRecord: (id: string) => void }) {
   const recordKey = job.target?.record_id_or_key ? String(job.target.record_id_or_key) : null;
+  const linkIds = Array.isArray(job.options.link_ids) ? job.options.link_ids : null;
   const optionChips = [
-    job.options.types ? `types: ${String(job.options.types)}` : 'all types',
-    job.options.include_par2 ? '+ .par2' : null,
+    linkIds
+      ? `${linkIds.length} selected file${linkIds.length === 1 ? '' : 's'}`
+      : job.options.types
+        ? `types: ${String(job.options.types)}`
+        : 'all types',
+    !linkIds && job.options.include_par2 ? '+ .par2' : null,
     job.options.count ? `${String(job.options.count)} records` : null,
   ].filter(Boolean) as string[];
   return (

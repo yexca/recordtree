@@ -10,6 +10,7 @@ class DownloadPlanRequest(BaseModel):
     types: str | list[str] | None = None
     output: str | None = None
     only_undownloaded: bool = False
+    link_ids: list[int] | None = None
 
     def types_text(self) -> str | None:
         if self.types is None:

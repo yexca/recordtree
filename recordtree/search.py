@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 from .exceptions import NotFoundError, ValidationError
@@ -685,8 +686,25 @@ class SearchService:
         safety_margin_percent: int,
         safety_margin_min_mb: int,
         only_undownloaded: bool = False,
+        link_ids: Sequence[int] | None = None,
     ) -> DownloadPlan:
+        """Select links to download and check the space they need.
+
+        `link_ids` selects those active links directly, so the `.par2` and type filters do not
+        apply to it; `only_undownloaded` still drops completed links from either selection.
+        """
         detail = self.get_info(record_id_or_key)
+        candidates = detail.links
+        if link_ids is not None:
+            wanted = set(link_ids)
+            unknown = wanted - {link.id for link in detail.links}
+            if unknown:
+                raise ValidationError(
+                    f"Not active links of record {detail.id}: " + ", ".join(str(link_id) for link_id in sorted(unknown))
+                )
+            if not wanted:
+                raise ValidationError("No links selected.")
+            candidates = [link for link in detail.links if link.id in wanted]
         links = [
             DownloadLink(
                 id=link.id,
@@ -697,16 +715,22 @@ class SearchService:
                 size_bytes=link.size_bytes,
                 formatted_size=link.formatted_size,
             )
-            for link in detail.links
+            for link in candidates
             if not only_undownloaded or link.status != "completed"
         ]
-        should_include_par2 = include_par2 or include_par2_by_default
-        if not should_include_par2:
-            links = [link for link in links if link.file_type != ".par2"]
+        if link_ids is not None:
+            should_include_par2 = any(link.file_type == ".par2" for link in links)
+            type_filter = None
+            if not links:
+                raise ValidationError("No links selected: every selected link is already downloaded.")
+        else:
+            should_include_par2 = include_par2 or include_par2_by_default
+            if not should_include_par2:
+                links = [link for link in links if link.file_type != ".par2"]
 
-        type_filter = parse_type_filter(type_filter_text)
-        if type_filter is not None:
-            links = [link for link in links if link.file_type in type_filter]
+            type_filter = parse_type_filter(type_filter_text)
+            if type_filter is not None:
+                links = [link for link in links if link.file_type in type_filter]
         if not links:
             description = "excluding .par2" if not should_include_par2 else "including .par2"
             if type_filter:

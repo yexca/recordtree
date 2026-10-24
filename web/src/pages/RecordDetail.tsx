@@ -2,14 +2,17 @@ import { Group } from '@mantine/core';
 import { IconBuildingBroadcastTower, IconCalendar, IconDatabase, IconUser } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { RecordDetail as RecordDetailType } from '../api/types';
+import type { LinkSummary, RecordDetail as RecordDetailType } from '../api/types';
 import { KeyValue, LinkProgress } from '../components/data';
 import { DownloadPlanner } from '../components/DownloadPlanner';
 import { EmptyState, ErrorBlock, LoadingBlock } from '../components/feedback';
 import { Page, PageHeader, Panel } from '../components/layout';
 import { RecordLinks } from '../components/RecordLinks';
 import { DownloadedBadge } from '../components/StatusBadge';
+import { useLinkSelection } from '../hooks/useLinkSelection';
 import { errorMessage, formatBytes, formatText } from '../lib/format';
+
+const NO_LINKS: LinkSummary[] = [];
 
 export default function RecordDetail({
   idOrKey,
@@ -23,6 +26,7 @@ export default function RecordDetail({
   const [record, setRecord] = useState<RecordDetailType | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const selection = useLinkSelection(record?.links ?? NO_LINKS);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -121,13 +125,17 @@ export default function RecordDetail({
             {record.links.length === 0 ? (
               <EmptyState compact message="This record has no active links." />
             ) : (
-              <RecordLinks links={record.links} />
+              <RecordLinks links={record.links} selection={selection} />
             )}
           </Panel>
         </div>
 
         <div className="rt-sticky">
-          <DownloadPlanner idOrKey={String(record.id)} onFinished={refreshQuietly} />
+          <DownloadPlanner
+            idOrKey={String(record.id)}
+            selectedLinks={selection.selectedLinks}
+            onFinished={refreshQuietly}
+          />
         </div>
       </div>
     </Page>

@@ -166,21 +166,12 @@ export const api = {
   undownloaded: (actor: string, source: string, limit: number) =>
     request<RecordSummary[]>(`/api/records/undownloaded${params({ actor, source, limit })}`),
   record: (idOrKey: string) => request<RecordDetail>(`/api/records/${encodeURIComponent(idOrKey)}`),
-  downloadPlan: (
-    idOrKey: string,
-    body: { include_par2: boolean; types: string | null; output?: string | null; only_undownloaded: boolean },
-  ) =>
+  downloadPlan: (idOrKey: string, body: { link_ids: number[]; output?: string | null }) =>
     request<DownloadPlan>(`/api/records/${encodeURIComponent(idOrKey)}/download-plan`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
-  createDownload: (body: {
-    record_id_or_key: string;
-    include_par2: boolean;
-    types: string | null;
-    output?: string | null;
-    only_undownloaded: boolean;
-  }) =>
+  createDownload: (body: { record_id_or_key: string; link_ids: number[]; output?: string | null }) =>
     request<JobCreateResponse>('/api/downloads', {
       method: 'POST',
       body: JSON.stringify(body),

@@ -126,6 +126,35 @@ def test_download_plan_filters_and_required_bytes(tmp_path: Path, monkeypatch: p
     assert "No links selected" in str(error.value)
 
 
+def test_download_plan_selects_chosen_links(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    group_id = _setup(tmp_path, monkeypatch)
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        link_ids = {
+            row["file_type"]: int(row["id"])
+            for row in conn.execute("SELECT id, file_type FROM download_links").fetchall()
+        }
+        _insert_download(conn, group_id, link_ids[".mp4"], "completed")
+        conn.commit()
+    finally:
+        conn.close()
+    app = RecordTreeApp()
+
+    # Chosen links skip the .par2 and type filters and keep link order.
+    chosen = app.build_download_plan(str(group_id), types="m4a", link_ids=[link_ids[".par2"], link_ids[".mp4"]])
+    assert [link.file_type for link in chosen.selected_links] == [".mp4", ".par2"]
+    assert chosen.selected_bytes == 400
+    assert chosen.include_par2 is True
+    assert chosen.type_filter is None
+
+    with pytest.raises(ValidationError, match="already downloaded"):
+        app.build_download_plan(str(group_id), only_undownloaded=True, link_ids=[link_ids[".mp4"]])
+    with pytest.raises(ValidationError, match="No links selected"):
+        app.build_download_plan(str(group_id), link_ids=[])
+    with pytest.raises(ValidationError, match="Not active links"):
+        app.build_download_plan(str(group_id), link_ids=[link_ids[".mp4"], 999])
+
+
 def test_download_success_failure_and_preflight_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

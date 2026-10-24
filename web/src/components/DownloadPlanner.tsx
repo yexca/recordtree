@@ -1,39 +1,18 @@
-import { Alert, Button, Collapse, Group, Modal, Stack, Switch, Table, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Modal, Stack, Text, TextInput } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconAlertTriangle,
-  IconCheck,
-  IconChevronDown,
-  IconChevronRight,
-  IconDownload,
-  IconListCheck,
-} from '@tabler/icons-react';
+import { IconAlertTriangle, IconCheck, IconDownload, IconListCheck } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import type { DownloadPlan, Job } from '../api/types';
+import type { DownloadPlan, Job, LinkSummary } from '../api/types';
 import { isTerminal, jobOutput, useJobStream } from '../hooks/useJobStream';
 import { formatBytes, formatText, previewUrl } from '../lib/format';
 import { notifyError, notifySuccess } from '../lib/notify';
-import { KeyValue, TableWrap } from './data';
+import { KeyValue } from './data';
 import { Panel } from './layout';
 import { LogViewer } from './LogViewer';
 import { StatusBadge, toneVar } from './StatusBadge';
 
-interface PlanOptions {
-  includePar2: boolean;
-  onlyUndownloaded: boolean;
-  types: string;
-  output: string;
-}
-
-function requestBody(options: PlanOptions) {
-  return {
-    include_par2: options.includePar2,
-    only_undownloaded: options.onlyUndownloaded,
-    types: options.types.trim() || null,
-    output: options.output.trim() || null,
-  };
-}
+const fileCount = (count: number) => `${count} file${count === 1 ? '' : 's'}`;
 
 function SpaceMeter({ plan }: { plan: DownloadPlan }) {
   if (plan.free_bytes_before == null) {
@@ -62,32 +41,28 @@ function SpaceMeter({ plan }: { plan: DownloadPlan }) {
   );
 }
 
-/** Option form, plan preview, confirmation, and live job output for a single record download. */
-export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFinished?: () => void }) {
-  const [options, setOptions] = useState<PlanOptions>({
-    includePar2: false,
-    onlyUndownloaded: true,
-    types: '',
-    output: '',
-  });
-  const [plan, setPlan] = useState<DownloadPlan | null>(null);
+/**
+ * Plan preview, confirmation, and live job output for downloading the checked links of one record.
+ * A plan belongs to the selection and output folder it was built for; changing either discards it.
+ */
+export function DownloadPlanner({
+  idOrKey,
+  selectedLinks,
+  onFinished,
+}: {
+  idOrKey: string;
+  selectedLinks: LinkSummary[];
+  onFinished?: () => void;
+}) {
+  const [output, setOutput] = useState('');
+  const [planned, setPlanned] = useState<{ key: string; plan: DownloadPlan } | null>(null);
   const [planning, setPlanning] = useState(false);
   const [starting, setStarting] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
-  const [filesOpen, { toggle: toggleFiles }] = useDisclosure(false);
   const [confirmOpened, { open: openConfirm, close: closeConfirm }] = useDisclosure(false);
   const reportedJob = useRef<string | null>(null);
 
   useJobStream(job, setJob);
-
-  useEffect(() => {
-    api
-      .settings()
-      .then((settings) =>
-        setOptions((current) => ({ ...current, includePar2: settings.download.include_par2_by_default })),
-      )
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     if (job && isTerminal(job.status) && reportedJob.current !== job.id) {
@@ -96,15 +71,19 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
     }
   }, [job, onFinished]);
 
-  const change = <K extends keyof PlanOptions>(key: K, value: PlanOptions[K]) => {
-    setOptions((current) => ({ ...current, [key]: value }));
-    setPlan(null);
-  };
+  const selectionKey = selectedLinks.map((link) => link.id).join(',');
+  const plan = planned?.key === selectionKey ? planned.plan : null;
+  const selectedBytes = selectedLinks.reduce((total, link) => total + link.size_bytes, 0);
 
   const buildPlan = async () => {
+    const key = selectionKey;
     setPlanning(true);
     try {
-      setPlan(await api.downloadPlan(idOrKey, requestBody(options)));
+      const next = await api.downloadPlan(idOrKey, {
+        link_ids: selectedLinks.map((link) => link.id),
+        output: output.trim() || null,
+      });
+      setPlanned({ key, plan: next });
     } catch (err) {
       notifyError('Plan unavailable', err);
     } finally {
@@ -113,9 +92,14 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
   };
 
   const startDownload = async () => {
+    if (!plan) return;
     setStarting(true);
     try {
-      const created = await api.createDownload({ record_id_or_key: idOrKey, ...requestBody(options) });
+      const created = await api.createDownload({
+        record_id_or_key: idOrKey,
+        link_ids: plan.selected_links.map((link) => link.id),
+        output: output.trim() || null,
+      });
       closeConfirm();
       notifySuccess('Download started', `Job ${created.job_id.slice(0, 8)}`);
       try {
@@ -150,38 +134,33 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
   return (
     <Panel
       title="Download"
-      description="Preview the plan, then start a MEGAcmd job."
+      description="Check the links to download, preview the plan, then start a MEGAcmd job."
       actions={job ? <StatusBadge value={job.status} /> : null}
     >
       <Stack gap="md">
-        <Stack gap={10}>
-          <Switch
-            label="Only undownloaded links"
-            checked={options.onlyUndownloaded}
-            onChange={(event) => change('onlyUndownloaded', event.currentTarget.checked)}
-          />
-          <Switch
-            label="Include .par2 files"
-            checked={options.includePar2}
-            onChange={(event) => change('includePar2', event.currentTarget.checked)}
-          />
-        </Stack>
-        <TextInput
-          label="File types"
-          description="Comma separated; leave empty for all types."
-          placeholder="mp4,m4a"
-          value={options.types}
-          onChange={(event) => change('types', event.currentTarget.value)}
-        />
+        <Text size="sm" c={selectedLinks.length ? undefined : 'dimmed'}>
+          {selectedLinks.length
+            ? `${fileCount(selectedLinks.length)} selected · ${formatBytes(selectedBytes)}`
+            : 'No links selected.'}
+        </Text>
         <TextInput
           label="Output folder"
           description="Leave empty to use the folder template."
           placeholder="Default from settings"
-          value={options.output}
-          onChange={(event) => change('output', event.currentTarget.value)}
+          value={output}
+          onChange={(event) => {
+            setOutput(event.currentTarget.value);
+            setPlanned(null);
+          }}
         />
         <Group grow gap="xs">
-          <Button variant="default" leftSection={<IconListCheck size={16} />} loading={planning} onClick={buildPlan}>
+          <Button
+            variant="default"
+            leftSection={<IconListCheck size={16} />}
+            loading={planning}
+            disabled={selectedLinks.length === 0}
+            onClick={buildPlan}
+          >
             Preview plan
           </Button>
           <Button
@@ -200,8 +179,11 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
               items={[
                 { label: 'Files', value: plan.selected_links.length },
                 { label: 'Selected size', value: formatBytes(plan.selected_bytes) },
-                { label: 'Types', value: plan.type_filter?.join(', ') || 'All' },
-                { label: '.par2', value: plan.include_par2 ? 'Included' : 'Excluded' },
+                {
+                  label: 'Types',
+                  value: [...new Set(plan.selected_links.map((link) => formatText(link.file_type)))].join(', '),
+                  full: true,
+                },
                 { label: 'Output', value: plan.output_dir, mono: true, full: true },
               ]}
             />
@@ -211,40 +193,6 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
                 <Text size="xs">Not enough free space for this plan and its safety margin.</Text>
               </Alert>
             ) : null}
-            {plan.selected_links.length === 0 ? (
-              <Text size="sm" c="dimmed">
-                No links match these options.
-              </Text>
-            ) : (
-              <>
-                <Button
-                  variant="subtle"
-                  color="gray"
-                  size="compact-sm"
-                  leftSection={filesOpen ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-                  onClick={toggleFiles}
-                  style={{ alignSelf: 'flex-start' }}
-                >
-                  {filesOpen ? 'Hide' : 'Show'} {plan.selected_links.length} selected file
-                  {plan.selected_links.length === 1 ? '' : 's'}
-                </Button>
-                <Collapse expanded={filesOpen}>
-                  <TableWrap>
-                    <Table fz="xs" verticalSpacing={6}>
-                      <Table.Tbody>
-                        {plan.selected_links.map((link) => (
-                          <Table.Tr key={link.id}>
-                            <Table.Td className="rt-id">{link.link_order}</Table.Td>
-                            <Table.Td title={link.file_name ?? undefined}>{formatText(link.file_type)}</Table.Td>
-                            <Table.Td className="rt-num">{link.formatted_size || formatBytes(link.size_bytes)}</Table.Td>
-                          </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
-                  </TableWrap>
-                </Collapse>
-              </>
-            )}
           </Stack>
         ) : null}
 
@@ -275,8 +223,8 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
         {plan ? (
           <Stack gap="md">
             <Text size="sm">
-              Download {plan.selected_links.length} file{plan.selected_links.length === 1 ? '' : 's'} (
-              {formatBytes(plan.selected_bytes)}) for <b>{plan.title}</b>.
+              Download {fileCount(plan.selected_links.length)} ({formatBytes(plan.selected_bytes)}) for{' '}
+              <b>{plan.title}</b>.
             </Text>
             <KeyValue
               columns={2}

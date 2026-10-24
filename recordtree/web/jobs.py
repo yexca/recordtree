@@ -75,6 +75,7 @@ class JobManager:
             "types": request.types_text(),
             "output": request.output_path(),
             "only_undownloaded": request.only_undownloaded,
+            "link_ids": request.link_ids,
         }
         job = Job(id=uuid.uuid4().hex, kind="download", target=target, options=options)
         self._add_event(job, "queued", {"target": target, "options": options})
@@ -210,6 +211,7 @@ class JobManager:
                 assume_yes=True,
                 only_undownloaded=request.only_undownloaded,
                 output_callback=lambda chunk: self._record_output(job_id, chunk),
+                link_ids=request.link_ids,
             )
         except Exception as error:
             self._mark_failed(job_id, str(error))

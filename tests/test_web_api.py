@@ -667,6 +667,52 @@ async def test_resume_download_reuses_persisted_request(
     assert calls == [first_output, first_output]
 
 
+async def test_selected_links_download_and_resume_unfinished_ones(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        link_ids = [int(row["id"]) for row in conn.execute("SELECT id FROM download_links ORDER BY link_order")]
+    finally:
+        conn.close()
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+    calls: list[str] = []
+
+    def fake_download(_mega_get: str, url: str, _output_dir: Path, output_callback=None) -> MegaCommandResult:
+        calls.append(url.rsplit("/", 1)[-1])
+        return MegaCommandResult(1, "", "failed") if url.endswith("/2") else MegaCommandResult(0, "ok", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+
+    async with _test_client() as client:
+        plan = (
+            await client.post(f"/api/records/{group_id}/download-plan", json={"link_ids": [link_ids[2], link_ids[0]]})
+        ).json()
+        assert [link["file_type"] for link in plan["selected_links"]] == [".mp4", ".par2"]
+
+        # Link 1 is already downloaded; choosing it downloads it again.
+        first = await client.post(
+            "/api/downloads",
+            json={"record_id_or_key": str(group_id), "link_ids": link_ids},
+        )
+        first_job = await _wait_for_job(client, first.json()["job_id"])
+        assert first_job["status"] == "failed"
+        assert first_job["options"]["link_ids"] == link_ids
+        assert calls == ["1", "2", "3"]
+
+        calls.clear()
+        resumed = await client.post(f"/api/downloads/{first_job['result']['download_id']}/resume")
+        await _wait_for_job(client, resumed.json()["job_id"])
+
+    assert calls == ["2"]
+
+
 async def test_init_marks_stale_downloads_interrupted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

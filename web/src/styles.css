@@ -2091,6 +2091,36 @@ button.rt-activity-item:hover {
   white-space: nowrap;
 }
 
+/* A badge can shrink to nothing in a crowded table; let the file name column give way instead. */
+.rt-cell-status .mantine-Badge-root {
+  min-width: max-content;
+}
+
+/* Quick filters above a record's links table; they set which links are checked. */
+.rt-link-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px 10px;
+}
+
+.rt-panel-body > .rt-link-filters:first-child {
+  padding-top: 12px;
+}
+
+.rt-link-filters-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--rt-border);
+}
+
+.rt-link-filter-count {
+  margin-left: 2px;
+  color: var(--rt-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
 /* The download planner renders its own panel; inside the drawer it becomes a plain section. */
 .rt-drawer-planner > .rt-panel {
   border: 0;

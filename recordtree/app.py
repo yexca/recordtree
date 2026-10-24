@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import datetime, timezone
 import json
@@ -776,6 +776,7 @@ class RecordTreeApp:
         types: str | None = None,
         output: Path | None = None,
         only_undownloaded: bool = False,
+        link_ids: Sequence[int] | None = None,
     ) -> DownloadPlan:
         app_config = config_module.load_config(config_module.default_config_path())
         conn = self._open_app_db()
@@ -791,6 +792,7 @@ class RecordTreeApp:
                 safety_margin_percent=app_config.safety_margin_percent,
                 safety_margin_min_mb=app_config.safety_margin_min_mb,
                 only_undownloaded=only_undownloaded,
+                link_ids=link_ids,
             )
         finally:
             conn.close()
@@ -805,9 +807,10 @@ class RecordTreeApp:
         confirm_callback=None,
         only_undownloaded: bool = False,
         output_callback: Callable[[str], None] | None = None,
+        link_ids: Sequence[int] | None = None,
     ) -> DownloadExecutionResult:
         app_config = config_module.load_config(config_module.default_config_path())
-        plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded)
+        plan = self.build_download_plan(record_id_or_key, include_par2, types, output, only_undownloaded, link_ids)
         request_json = _download_request_json(
             kind="record",
             record_id_or_key=record_id_or_key,
@@ -815,6 +818,7 @@ class RecordTreeApp:
             types=types,
             output=plan.output_dir,
             only_undownloaded=only_undownloaded,
+            link_ids=link_ids,
         )
         conn = self._open_app_db()
         downloads = DownloadRepository(conn)
@@ -1054,12 +1058,20 @@ class RecordTreeApp:
         record_id_or_key = payload.get("record_id_or_key")
         if not isinstance(record_id_or_key, str) or not record_id_or_key.strip():
             raise ValidationError(f"Download {download_id} has invalid resume target.")
+        link_ids = payload.get("link_ids")
+        if link_ids is not None and (
+            not isinstance(link_ids, list) or not all(type(link_id) is int for link_id in link_ids)
+        ):
+            raise ValidationError(f"Download {download_id} has invalid selected links.")
         return {
             "record_id_or_key": record_id_or_key,
             "include_par2": bool(payload.get("include_par2", False)),
             "types": payload.get("types") if isinstance(payload.get("types"), str) else None,
             "output": payload.get("output") if isinstance(payload.get("output"), str) else None,
-            "only_undownloaded": bool(payload.get("only_undownloaded", True)),
+            # Resuming chosen links finishes the ones not downloaded yet, even when the
+            # original request re-downloaded completed links on purpose.
+            "only_undownloaded": True if link_ids is not None else bool(payload.get("only_undownloaded", True)),
+            "link_ids": link_ids,
         }
 
     def list_download_items(self, download_id: int) -> list[DownloadItemDetail]:
@@ -1301,6 +1313,7 @@ def _download_request_json(
     types: str | None,
     output: Path,
     only_undownloaded: bool,
+    link_ids: Sequence[int] | None = None,
 ) -> str:
     return json.dumps(
         {
@@ -1310,6 +1323,7 @@ def _download_request_json(
             "types": types,
             "output": str(output),
             "only_undownloaded": only_undownloaded,
+            "link_ids": sorted(set(link_ids)) if link_ids is not None else None,
         },
         ensure_ascii=False,
         sort_keys=True,

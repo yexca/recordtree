@@ -253,7 +253,7 @@ function DownloadSettings() {
         <Panel title="Defaults">
           <Switch
             label="Include .par2 files by default"
-            description="Pre-selects .par2 recovery files in new download plans."
+            description="Checks .par2 recovery files in a record's links, and includes them in actor and CLI downloads."
             checked={form.includePar2}
             onChange={(event) => update('includePar2', event.currentTarget.checked)}
           />

@@ -447,6 +447,7 @@ def download_plan(record_id_or_key: str, request: DownloadPlanRequest) -> dict[s
             types=request.types_text(),
             output=request.output_path(),
             only_undownloaded=request.only_undownloaded,
+            link_ids=request.link_ids,
         )
     )
 

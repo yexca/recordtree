@@ -12,8 +12,9 @@ import {
 } from '@tabler/icons-react';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../api/client';
-import type { RecordDetail } from '../api/types';
+import type { LinkSummary, RecordDetail } from '../api/types';
 import { recordHref } from '../app/routes';
+import { useLinkSelection } from '../hooks/useLinkSelection';
 import { errorMessage, formatBytes, formatNumber, formatText } from '../lib/format';
 import { KeyValue, RecordProgress } from './data';
 import { DownloadPlanner } from './DownloadPlanner';
@@ -22,6 +23,8 @@ import { RecordLinks } from './RecordLinks';
 import { DownloadedBadge } from './StatusBadge';
 
 export type RecordFilterField = 'actor' | 'platform';
+
+const NO_LINKS: LinkSummary[] = [];
 
 function MetaFilter({
   icon,
@@ -73,6 +76,7 @@ export function RecordDrawer({
   const [moreOpen, { toggle: toggleMore }] = useDisclosure(false);
   const requestId = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const selection = useLinkSelection(record?.links ?? NO_LINKS);
 
   const load = useCallback(async () => {
     const id = ++requestId.current;
@@ -190,7 +194,7 @@ export function RecordDrawer({
               {record.links.length === 0 ? (
                 <EmptyState compact message="This record has no active links." />
               ) : (
-                <RecordLinks links={record.links} compact />
+                <RecordLinks links={record.links} selection={selection} compact />
               )}
             </div>
 
@@ -198,6 +202,7 @@ export function RecordDrawer({
               <DownloadPlanner
                 key={record.id}
                 idOrKey={String(record.id)}
+                selectedLinks={selection.selectedLinks}
                 onFinished={() => {
                   void load();
                   onChanged();
