@@ -450,7 +450,7 @@ function MegaSettings() {
           </Button>
         }
       >
-        <Collapse in={advancedOpen && Boolean(status)}>
+        <Collapse expanded={advancedOpen && Boolean(status)}>
           {status ? (
             <>
               <div style={{ padding: '4px 18px 0' }}>

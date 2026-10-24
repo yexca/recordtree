@@ -210,7 +210,7 @@ export function RecordDrawer({
                 {moreOpen ? <IconChevronDown size={15} /> : <IconChevronRight size={15} />}
                 More info
               </UnstyledButton>
-              <Collapse in={moreOpen}>
+              <Collapse expanded={moreOpen}>
                 <div style={{ paddingTop: 12 }}>
                   <KeyValue
                     columns={1}
