@@ -14,7 +14,7 @@
     "@mantine/hooks": "^8.2.5",
     "@mantine/notifications": "^8.2.5",
     "@tabler/icons-react": "^3.34.0",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.1.2",
     "dayjs": "^1.11.21",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
