@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: recordtree-downloader-sqlite
+  IMAGE_NAME: recordtree
   # The Dockerfile installs the amd64 MEGAcmd package, so the image is amd64 only.
   IMAGE_PLATFORMS: linux/amd64
 
@@ -110,7 +110,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
           labels: |
-            org.opencontainers.image.title=RecordTreeDownloader SQLite
+            org.opencontainers.image.title=RecordTree
             org.opencontainers.image.description=Local SQLite-backed Record Tree downloader with a WebUI
 
       - name: Build and push production image

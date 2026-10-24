@@ -1,15 +1,13 @@
 # Docker Deployment
 
-The production Docker image builds the React frontend, serves it from the FastAPI backend, and installs the official Debian 12 MEGAcmd package.
+The Docker image builds the React frontend, serves it from the FastAPI backend, and installs the official Debian 12 MEGAcmd package.
 
-You can run the published image or build the image from a clone of this repository. Both use the same service name, port, and host directories, so every section after the two start options applies to either.
-
-## Run The Published Image
+## Images
 
 Each release publishes the image to Docker Hub and the GitHub Container Registry:
 
-- `yexca/recordtree-downloader-sqlite`
-- `ghcr.io/yexca/recordtree-downloader-sqlite`
+- `yexca/recordtree`
+- `ghcr.io/yexca/recordtree`
 
 | Tag | Points to |
 | --- | --- |
@@ -17,45 +15,32 @@ Each release publishes the image to Docker Hub and the GitHub Container Registry
 | `X.Y`, for example `0.1` | The newest patch release of that minor version |
 | `latest` | The newest release |
 
-Pin a version tag so that an update happens only when you change the tag. The image is built for `linux/amd64` only, because it installs the amd64 MEGAcmd package.
+The image is built for `linux/amd64` only, because it installs the amd64 MEGAcmd package.
 
-Create an empty directory and save this file in it as `compose.yaml`:
+## Start
 
-```yaml
-services:
-  recordtree-web:
-    image: yexca/recordtree-downloader-sqlite:0.1.0
-    container_name: recordtree-web
-    ports:
-      - "7647:7647"
-    environment:
-      TZ: Asia/Tokyo
-    volumes:
-      - ./config:/app/config
-      - ./downloads:/app/downloads
-      - ./logs:/app/logs
-      - ./files:/app/files
-      - ./env/megacmd-home:/root
-    restart: unless-stopped
+Create an empty directory and download [`docker-compose.yml`](../../docker-compose.yml) into it:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/yexca/recordtree/main/docker-compose.yml
 ```
 
-Set `TZ` to your own time zone. Then start it from that directory:
+Edit `TZ` in the file to your own time zone, then start the service from that directory:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-To update, change the tag in `compose.yaml` and run both commands again. The host directories keep your data across the update.
+## Choose The Image
 
-## Build From Source
+The file runs `yexca/recordtree:latest` unless the `RECORDTREE_IMAGE` variable names another image. To pin a release, so that an update happens only when you change the tag, put the variable in a `.env` file next to `docker-compose.yml`:
 
-From a clone of this repository, the bundled `docker-compose.yml` builds the image locally:
-
-```bash
-docker compose build
-docker compose up -d
+```text
+RECORDTREE_IMAGE=yexca/recordtree:0.1.0
 ```
+
+To update, change the tag (or keep `latest`) and run `docker compose pull` and `docker compose up -d` again. The host directories keep your data across the update.
 
 ## Open The WebUI
 
@@ -72,7 +57,7 @@ docker compose exec recordtree-web recordtree doctor
 
 ## MEGA Login
 
-MEGA credentials are managed by MEGAcmd, not by RecordTreeDownloader SQLite. You can log in from the WebUI Settings page or from the container shell.
+MEGA credentials are managed by MEGAcmd, not by RecordTree. You can log in from the WebUI Settings page or from the container shell.
 
 ```bash
 docker compose exec recordtree-web mega-login

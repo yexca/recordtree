@@ -4,8 +4,9 @@ The WebUI provides a browser interface for the same local workflows as the CLI.
 
 ## Start With Docker
 
+Download `docker-compose.yml` as described in [Docker deployment](docker.md#start), then run:
+
 ```bash
-docker compose build
 docker compose up -d
 docker compose exec recordtree-web recordtree init
 docker compose exec recordtree-web mega-login

@@ -1,6 +1,6 @@
-# RecordTreeDownloader SQLite
+# RecordTree
 
-RecordTreeDownloader SQLite is a local-first tool for importing Record Tree metadata into SQLite, searching it, and downloading selected MEGA links through MEGAcmd. It provides both a CLI and a Docker-ready WebUI backed by FastAPI and React.
+RecordTree is a local-first tool for importing Record Tree metadata into SQLite, searching it, and downloading selected MEGA links through MEGAcmd. It provides both a CLI and a Docker-ready WebUI backed by FastAPI and React.
 
 The application does not crawl remote sources and does not store MEGA credentials. MEGA authentication stays in your MEGAcmd installation.
 
@@ -17,10 +17,10 @@ The application does not crawl remote sources and does not store MEGA credential
 
 ### Docker WebUI
 
-To run the published image without cloning the repository, follow [Run the published image](docs/user-guide/docker.md#run-the-published-image). From a clone, build and start it with:
+In an empty directory, download [`docker-compose.yml`](docker-compose.yml) and start the published image. Image tags, time zone, and data directories are covered in [Docker deployment](docs/user-guide/docker.md).
 
 ```bash
-docker compose build
+curl -fsSLO https://raw.githubusercontent.com/yexca/recordtree/main/docker-compose.yml
 docker compose up -d
 docker compose exec recordtree-web recordtree init
 docker compose exec recordtree-web mega-login

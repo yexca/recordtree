@@ -1,3 +1,3 @@
-"""RecordTreeDownloader SQLite CLI package."""
+"""RecordTree CLI package."""
 
 __version__ = "0.1.0"

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    image: recordtree-downloader-sqlite-dev:latest
+    image: recordtree-dev:latest
     container_name: recordtree-dev
     working_dir: /workspace
     command: sleep infinity

@@ -73,7 +73,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build production image
-        run: make DOCKER_IMAGE=recordtree-downloader-sqlite:ci docker-build
+        run: make DOCKER_IMAGE=recordtree:ci docker-build
 
   # The only result a caller or a ruleset needs: it fails unless every job
   # succeeded.

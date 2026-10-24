@@ -1,8 +1,6 @@
 services:
   recordtree-web:
-    build:
-      context: .
-    image: recordtree-downloader-sqlite-web:dev
+    image: ${RECORDTREE_IMAGE:-yexca/recordtree:latest}
     container_name: recordtree-web
     ports:
       - "7647:7647"

@@ -1,6 +1,6 @@
-# RecordTreeDownloader SQLite
+# RecordTree
 
-RecordTreeDownloader SQLite 是一个本地优先的 Record Tree 元数据管理和下载工具。它可以把 Excel、旧 SQLite、旧 JSON 数据导入 SQLite，支持搜索记录，并通过 MEGAcmd 下载选中的 MEGA 链接。
+RecordTree 是一个本地优先的 Record Tree 元数据管理和下载工具。它可以把 Excel、旧 SQLite、旧 JSON 数据导入 SQLite，支持搜索记录，并通过 MEGAcmd 下载选中的 MEGA 链接。
 
 本工具不抓取远程来源，也不保存 MEGA 凭据。MEGA 登录状态由 MEGAcmd 自行管理。
 
@@ -16,10 +16,10 @@ RecordTreeDownloader SQLite 是一个本地优先的 Record Tree 元数据管理
 
 ### Docker WebUI
 
-不克隆仓库、直接运行已发布的镜像，请参考[运行已发布的镜像](docs/user-guide/docker.md#run-the-published-image)。在仓库克隆中构建并启动：
+在一个空目录中下载 [`docker-compose.yml`](docker-compose.yml)，然后启动已发布的镜像。镜像标签、时区和数据目录的说明见 [Docker 部署](docs/user-guide/docker.md)。
 
 ```bash
-docker compose build
+curl -fsSLO https://raw.githubusercontent.com/yexca/recordtree/main/docker-compose.yml
 docker compose up -d
 docker compose exec recordtree-web recordtree init
 docker compose exec recordtree-web mega-login
