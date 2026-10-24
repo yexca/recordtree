@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,7 @@ def test_download_plan_filters_and_required_bytes(tmp_path: Path, monkeypatch: p
 def test_download_success_failure_and_preflight_blocks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    free_disk_space: Callable[[int], None],
 ) -> None:
     group_id = _setup(tmp_path, monkeypatch)
     calls: list[str] = []
@@ -187,6 +189,16 @@ def test_download_success_failure_and_preflight_blocks(
     )
     blocked = RecordTreeApp().download(str(group_id), types="mp4", assume_yes=True)
     assert blocked.status == "blocked"
+    assert calls == []
+
+    monkeypatch.setattr(
+        "recordtree.mega.check_login",
+        lambda _whoami: MegaLoginStatus(True, 0, "Account: test"),
+    )
+    free_disk_space(1024)
+    no_space = RecordTreeApp().download(str(group_id), types="mp4", assume_yes=True)
+    assert no_space.status == "blocked"
+    assert "Insufficient disk space" in no_space.message
     assert calls == []
 
 
