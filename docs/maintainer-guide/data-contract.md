@@ -25,7 +25,7 @@ Dates may be typed Excel date cells or ISO-like strings. Blank dates become null
 
 ## MEGA JSON
 
-Each row's `mega_json` is a JSON object whose `property` field is a non-empty list of link items. Other root fields, such as `FileNames`, `total`, and `FormattedSize`, are ignored.
+Each row's `mega_json` is a JSON object whose `property` field is a non-empty list of link items. Other root fields, such as `FileNames`, `total`, and `FormattedSize`, are ignored. The export writes `null` for a row whose files have no MEGA links yet; that row imports as a record group without links, which search reports as `unknown`.
 
 Each `property` item is an object with:
 
@@ -34,7 +34,7 @@ Each `property` item is an object with:
 - `Type`: optional; either an extension (`mp4`, `.MP4`) or a full file name (`[actor][date][title][date].mp4`). The extension becomes the link's file type, lower-case with a leading dot. A full file name is also kept as the link's file name.
 - `FormattedSize`: optional human-readable size
 
-String values may contain raw control characters such as line breaks, and surrounding whitespace is trimmed. Malformed JSON, a root that is not an object, a missing or empty `property`, a missing `Link`, or an invalid `Size` produce row-level import errors.
+String values may contain raw control characters such as line breaks, and surrounding whitespace is trimmed. Malformed JSON, a root that is neither an object nor `null`, a missing or empty `property`, a missing `Link`, or an invalid `Size` produce row-level import errors.
 
 ## Import Synchronization
 

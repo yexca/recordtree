@@ -26,6 +26,9 @@ def parse_mega_json(raw: object, row_number: int | None = None) -> list[LinkItem
             row_number=row_number,
             raw_value=text,
         ) from error
+    if root is None:
+        # The export writes null for a row whose files have no MEGA links yet.
+        return []
     if not isinstance(root, dict):
         raise ImportRowError(
             "mega_json_invalid_root",

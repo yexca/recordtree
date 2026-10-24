@@ -193,6 +193,30 @@ def test_row_with_all_new_links_keeps_the_group_with_the_same_source_key(tmp_pat
         conn.close()
 
 
+def test_row_without_links_stays_live_and_gets_its_links_back(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    try:
+        _sync(conn, tmp_path, [_record()])
+        _mark_completed(conn, "title")
+        group_id = _group(conn, "Title")["id"]
+
+        emptied = _sync(conn, tmp_path, [replace(_record(), links=[])])
+
+        assert emptied.error_count == emptied.removed_groups == 0
+        assert emptied.removed_links == emptied.link_sets_changed == 1
+        assert _group(conn, "Title")["is_deleted"] == 0
+        assert _link_row(conn, "title")["is_deleted"] == 1
+
+        refilled = _sync(conn, tmp_path, [_record()])
+
+        assert refilled.link_sets_changed == 1
+        assert _group(conn, "Title")["id"] == group_id
+        assert _link_row(conn, "title")["is_deleted"] == 0
+        assert _completed(conn, "title")
+    finally:
+        conn.close()
+
+
 def test_rows_missing_from_the_workbook_are_removed_and_restored(tmp_path: Path) -> None:
     conn = _conn(tmp_path)
     try:

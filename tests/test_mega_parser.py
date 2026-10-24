@@ -63,8 +63,8 @@ def test_parse_mega_json_accepts_raw_line_breaks_inside_strings() -> None:
     [
         ("", "mega_json_parse_error"),
         ("{not json", "mega_json_parse_error"),
-        ("null", "mega_json_invalid_root"),
         ("[]", "mega_json_invalid_root"),
+        ('"text"', "mega_json_invalid_root"),
         ("{}", "mega_property_invalid"),
         ('{"property": {}}', "mega_property_invalid"),
         ('{"property": []}', "mega_property_empty"),
@@ -79,6 +79,10 @@ def test_parse_mega_json_reports_invalid_shapes(raw: str, error_type: str) -> No
 
     assert error.value.error_type == error_type
     assert error.value.row_number == 3
+
+
+def test_parse_mega_json_reads_null_as_no_links() -> None:
+    assert parse_mega_json("null", row_number=3) == []
 
 
 def test_parse_mega_json_allows_missing_type() -> None:

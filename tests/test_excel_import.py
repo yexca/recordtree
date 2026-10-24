@@ -311,3 +311,25 @@ def test_workbook_without_valid_rows_leaves_the_library_unchanged(tmp_path: Path
         assert conn.execute("SELECT status FROM imports ORDER BY id DESC").fetchone()[0] == "failed"
     finally:
         conn.close()
+
+
+def test_excel_row_with_null_mega_imports_without_links(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    workbook_path = tmp_path / "pending.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(REAL_XLSX_HEADERS[:-1])
+    sheet.append(["Actor A", "2026-01-02", "Pending upload", "2026-01-03", None, "Upload", None, "Withny", "null", "65 MB"])
+    workbook.save(workbook_path)
+
+    result = RecordTreeApp().import_file(workbook_path)
+
+    assert result.status == "completed"
+    assert result.stats.error_count == 0
+    assert result.stats.inserted_groups == 1
+    assert result.stats.inserted_links == 0
+    detail = RecordTreeApp().info("1")
+    assert detail.title == "Pending upload"
+    assert detail.links == []
+    assert detail.downloaded == "unknown"
