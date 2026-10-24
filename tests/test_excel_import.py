@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 
 from openpyxl import Workbook
+import pytest
 
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
+from recordtree.exceptions import ValidationError
 
 
 HEADERS = [
@@ -173,8 +175,9 @@ def test_excel_import_records_errors_and_is_idempotent(tmp_path: Path, monkeypat
 
     assert second.status == "completed_with_errors"
     assert second.stats.inserted_groups == 0
-    assert second.stats.updated_groups == 3
-    assert second.stats.skipped_links == 4
+    assert second.stats.updated_groups == 0
+    assert second.stats.unchanged_groups == 3
+    assert second.stats.removed_groups == 0
     assert second.stats.error_count == 1
 
     conn = connect(tmp_path / "config" / "recordtree.sqlite3")
@@ -221,7 +224,6 @@ def test_import_file_reports_progress(tmp_path: Path, monkeypatch) -> None:
         ("Reading", 2, 4),
         ("Reading", 3, 4),
         ("Reading", 4, 4),
-        ("Writing", 4, 7),
         ("Writing", 5, 7),
         ("Writing", 6, 7),
         ("Writing", 7, 7),
@@ -247,8 +249,7 @@ def test_excel_duplicate_source_keys_merge_links_and_reimport_is_idempotent(
 
     assert second.stats.total_rows == 2
     assert second.stats.inserted_groups == 0
-    assert second.stats.updated_groups == 1
-    assert second.stats.skipped_links == 2
+    assert second.stats.unchanged_groups == 1
     assert second.stats.link_sets_changed == 0
     assert second.stats.inserted_links == 0
 
@@ -259,5 +260,54 @@ def test_excel_duplicate_source_keys_merge_links_and_reimport_is_idempotent(
         assert conn.execute("SELECT COUNT(*) FROM download_links WHERE is_deleted = 1").fetchone()[0] == 0
         notes = conn.execute("SELECT notes FROM imports WHERE id = ?", (first.import_id,)).fetchone()[0]
         assert "Duplicate Excel records merged: 1 source keys, 1 extra rows" in notes
+    finally:
+        conn.close()
+
+
+def test_excel_import_reads_file_names_and_raw_line_breaks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    workbook_path = tmp_path / "current.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(REAL_XLSX_HEADERS[:-1])
+    name = "[Actor A][2026-01-02][Title][2026-01-03]"
+    mega = (
+        '{"FileNames": "' + name + '", "total": 0, "FormattedSize": "0 KB", "property": ['
+        '{"Link": "https://example.invalid/current/1", "Size": 2048, "FormattedSize": "2 KB", "Type": "' + name + '.mp4"},'
+        '{"Link": "https://example.invalid/current/2", "Size": 64, "FormattedSize": "64 B", "Type": ".exe\r\n"}]}'
+    )
+    sheet.append(["Actor A", "2026-01-02", "Title", "2026-01-03", None, name, "46024 - Actor A", "Withny", mega, "2 KB"])
+    workbook.save(workbook_path)
+
+    result = RecordTreeApp().import_file(workbook_path)
+
+    assert result.status == "completed"
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        rows = conn.execute("SELECT file_name, file_type FROM download_links ORDER BY link_order").fetchall()
+    finally:
+        conn.close()
+    assert [tuple(row) for row in rows] == [(f"{name}.mp4", ".mp4"), (None, ".exe")]
+
+
+def test_workbook_without_valid_rows_leaves_the_library_unchanged(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    RecordTreeApp().init()
+    full = tmp_path / "full.xlsx"
+    _write_workbook(full)
+    RecordTreeApp().import_file(full)
+    empty = tmp_path / "empty.xlsx"
+    workbook = Workbook()
+    workbook.active.append(HEADERS)
+    workbook.save(empty)
+
+    with pytest.raises(ValidationError, match="no valid rows"):
+        RecordTreeApp().import_file(empty)
+
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM record_groups WHERE is_deleted = 0").fetchone()[0] == 3
+        assert conn.execute("SELECT status FROM imports ORDER BY id DESC").fetchone()[0] == "failed"
     finally:
         conn.close()

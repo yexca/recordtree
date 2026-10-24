@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import date, datetime
-from decimal import Decimal
 import hashlib
 import json
 import math
 
 from .exceptions import ValidationError
-from .models import ImportRecord, LinkItem
+from .models import ImportRecord
 
 
 def clean_text(value: object) -> str | None:
@@ -54,12 +52,24 @@ def normalize_date(value: object) -> str | None:
         raise ValidationError(f"Invalid date value: {text}") from error
 
 
-def normalize_file_type(value: object) -> str | None:
+def split_file_type(value: object) -> tuple[str | None, str | None]:
+    """Splits a MEGA `Type` value into a file name and a lower-case extension with a leading dot.
+
+    The value is either an extension (`mp4`, `.MP4`) or a full file name (`[actor][date].mp4`).
+    """
     text = clean_text(value)
     if text is None:
-        return None
-    normalized = text.casefold()
-    return normalized if normalized.startswith(".") else f".{normalized}"
+        return None, None
+    stem, dot, extension = text.rpartition(".")
+    if not dot:
+        return None, f".{text.casefold()}"
+    if not extension.strip():
+        return (text if stem else None), None
+    return (text if stem else None), f".{extension.strip().casefold()}"
+
+
+def normalize_file_type(value: object) -> str | None:
+    return split_file_type(value)[1]
 
 
 def build_source_key(record: ImportRecord) -> str:
@@ -74,42 +84,6 @@ def build_source_key(record: ImportRecord) -> str:
     return _hash_payload(payload)
 
 
-def build_link_content_hash(link: LinkItem) -> str:
-    payload = {
-        "mega_url": clean_text(link.mega_url),
-        "file_type": normalize_file_type(link.file_type),
-        "size_bytes": _safe_int(link.size_bytes),
-        "formatted_size": clean_text(link.formatted_size),
-    }
-    return _hash_payload(payload)
-
-
-def build_link_set_hash(links: Iterable[LinkItem]) -> str:
-    payload = [
-        {
-            "link_order": link.link_order,
-            "mega_url": clean_text(link.mega_url),
-            "file_type": normalize_file_type(link.file_type),
-            "size_bytes": _safe_int(link.size_bytes),
-            "formatted_size": clean_text(link.formatted_size),
-        }
-        for link in links
-    ]
-    return _hash_payload(payload)
-
-
 def _hash_payload(payload: object) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _safe_int(value: object) -> int:
-    if isinstance(value, bool):
-        raise ValidationError("Boolean values are not valid integers.")
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, Decimal):
-        return int(value)
-    return int(str(value).strip())

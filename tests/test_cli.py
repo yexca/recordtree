@@ -8,13 +8,12 @@ from recordtree.cli import app
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
 from recordtree.importer.service import ImportService
-from recordtree.models import ActorDownloadResult, ImportRecord, LinkItem
+from recordtree.models import ActorDownloadResult, ImportRecord, ImportStats, LinkItem
 from recordtree.repositories import ImportRepository
 
 
 def _record(actor: str = "CLI Actor") -> ImportRecord:
     return ImportRecord(
-        source_type="xlsx",
         actor_raw=actor,
         delivery_date="2026-01-02",
         title="CLI title",
@@ -25,10 +24,6 @@ def _record(actor: str = "CLI Actor") -> ImportRecord:
         source_name="Source",
         size_raw=None,
         size_bytes=100,
-        mega_file_name="cli",
-        mega_total_bytes=100,
-        mega_formatted_size=None,
-        mega_json="{}",
         source_row_number=2,
         links=[LinkItem(1, "https://example.invalid/cli/1", ".mp4", 100, "100 B")],
     )
@@ -41,8 +36,8 @@ def _setup_record(tmp_path: Path, monkeypatch) -> int:
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
-        import_id = ImportRepository(conn).create_import("xlsx", source)
-        ImportService(conn).upsert_record(import_id, _record())
+        import_id = ImportRepository(conn).create_import(source)
+        ImportService(conn).sync(import_id, [_record()], ImportStats())
         actor_id = int(conn.execute("SELECT id FROM actors WHERE name = ?", ("CLI Actor",)).fetchone()[0])
         conn.commit()
         return actor_id

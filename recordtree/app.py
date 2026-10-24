@@ -14,9 +14,7 @@ from . import db
 from . import mega
 from .exceptions import ConfigError, ExternalToolError, ImportRowError, NotFoundError, ValidationError
 from .importer.excel import ExcelImporter
-from .importer.json_importer import JsonImporter
-from .importer.legacy_db import LegacyDbImporter, LegacyMigrationService
-from .importer.service import ImportService, apply_upsert_result
+from .importer.service import ImportService, SyncSummary
 from .models import (
     ActorSummary,
     ActorDownloadResult,
@@ -33,7 +31,6 @@ from .models import (
     ImportPage,
     ImportProgress,
     ImportStats,
-    LinkItem,
     IntegrityResult,
     InitResult,
     MaintenanceActionResult,
@@ -50,15 +47,13 @@ from .models import (
     SourcePage,
     StatsResult,
 )
-from .normalizers import build_source_key, clean_text, normalize_file_type
 from .path_templates import allowed_download_template_variables, normalize_download_folder_template
 from .repositories import ActorRepository, DownloadRepository, ImportRepository
 from .search import SearchService, normalize_limit, normalize_page
 
-XLSX_EXTENSIONS = frozenset({".xlsx", ".xlsm"})
-LEGACY_DB_EXTENSIONS = frozenset({".db", ".sqlite", ".sqlite3"})
-JSON_EXTENSIONS = frozenset({".json"})
-IMPORT_FILE_EXTENSIONS = XLSX_EXTENSIONS | LEGACY_DB_EXTENSIONS | JSON_EXTENSIONS
+IMPORT_FILE_EXTENSIONS = frozenset({".xlsx", ".xlsm"})
+# Progress events per import phase; each one becomes a WebUI job event.
+IMPORT_PROGRESS_STEPS = 200
 
 
 class RecordTreeApp:
@@ -205,10 +200,14 @@ class RecordTreeApp:
         path: Path,
         progress_callback: Callable[[ImportProgress], None] | None = None,
     ) -> ImportResult:
+        """Imports a Record Tree workbook as the complete current library."""
         source_path = path.expanduser().resolve()
         if not source_path.exists():
             raise NotFoundError(f"Import source does not exist: {source_path}")
-        source_type, importer = self._create_importer(source_path)
+        extension = source_path.suffix.casefold()
+        if extension not in IMPORT_FILE_EXTENSIONS:
+            raise ValidationError(f"Unsupported import file extension: {extension}")
+        importer = ExcelImporter()
 
         config_path = config_module.ensure_config(config_module.default_config_path())
         app_config = config_module.load_config(config_path)
@@ -216,72 +215,45 @@ class RecordTreeApp:
         app_config.logs_dir.mkdir(parents=True, exist_ok=True)
 
         conn = db.connect(app_config.database_path)
-        db.initialize_schema(conn)
-        import_repo = ImportRepository(conn)
-        import_id = import_repo.create_import(source_type, source_path)
+        try:
+            db.initialize_schema(conn)
+            import_repo = ImportRepository(conn)
+            import_id = import_repo.create_import(source_path)
+            conn.commit()
+        except Exception:
+            conn.close()
+            raise
         stats = ImportStats()
         error_csv_path: Path | None = None
         status = "completed"
         notes: str | None = None
+        report = _ImportProgressReporter(progress_callback, source_path)
         try:
-            total_rows = _count_import_rows(importer, source_path)
-            _report_import_progress(progress_callback, source_type, source_path, 0, total_rows, "Importing")
+            total_rows = importer.count_records(source_path)
+            report("Importing", 0, total_rows)
             with db.transaction(conn):
-                service = ImportService(conn, prefer_xlsx_metadata=app_config.prefer_xlsx_metadata)
-                if isinstance(importer, LegacyDbImporter):
-                    migration = LegacyMigrationService(conn, import_id)
-                    for legacy_row in importer.iter_rows(source_path):
-                        stats.total_rows += 1
-                        migration.migrate_row(legacy_row, stats)
-                        _report_import_progress(
-                            progress_callback,
-                            source_type,
-                            source_path,
-                            stats.total_rows,
-                            total_rows,
-                            "Importing",
-                        )
-                elif isinstance(importer, ExcelImporter):
-                    _import_excel_records(
-                        importer,
-                        source_path,
-                        service,
-                        import_id,
-                        stats,
-                        progress_callback,
-                        total_rows,
-                        source_type,
-                    )
-                else:
-                    for record in importer.iter_records(source_path):
-                        stats.total_rows += 1
-                        if isinstance(record, ImportRowError):
-                            service.record_error(import_id, record)
-                            stats.error_count += 1
-                        else:
-                            try:
-                                result = service.upsert_record(import_id, record)
-                            except ImportRowError as error:
-                                service.record_error(import_id, error)
-                                stats.error_count += 1
-                            else:
-                                apply_upsert_result(stats, result)
-                        _report_import_progress(
-                            progress_callback,
-                            source_type,
-                            source_path,
-                            stats.total_rows,
-                            total_rows,
-                            "Importing",
-                        )
-                status = "completed_with_errors" if stats.error_count else "completed"
-                notes = _import_notes(importer)
-                import_repo.finish_import(
+                service = ImportService(conn)
+                records = []
+                for record in importer.iter_records(source_path):
+                    stats.total_rows += 1
+                    if isinstance(record, ImportRowError):
+                        service.record_error(import_id, record)
+                        stats.error_count += 1
+                    else:
+                        records.append(record)
+                    report("Reading", stats.total_rows, total_rows)
+                if not records:
+                    raise ValidationError("Workbook has no valid rows, so the library was left unchanged.")
+                read_rows = stats.total_rows
+                summary = service.sync(
                     import_id,
+                    records,
                     stats,
-                    status,
-                    notes=notes,
+                    progress=lambda written, total: report("Writing", read_rows + written, read_rows + total),
                 )
+                status = "completed_with_errors" if stats.error_count else "completed"
+                notes = _import_notes(importer.extra_columns, summary)
+                import_repo.finish_import(import_id, stats, status, notes=notes)
             if stats.error_count:
                 error_csv_path = _export_import_errors(conn, import_id, app_config.logs_dir)
         except Exception as error:
@@ -293,12 +265,11 @@ class RecordTreeApp:
 
         return ImportResult(
             import_id=import_id,
-            source_type=source_type,
             source_path=source_path,
             status=status,
             stats=stats,
             error_csv_path=error_csv_path,
-            extra_columns=tuple(getattr(importer, "extra_columns", ())),
+            extra_columns=importer.extra_columns,
             notes=notes,
         )
 
@@ -307,21 +278,15 @@ class RecordTreeApp:
         page: int = 1,
         page_size: int = 50,
         status: str | None = None,
-        source_type: str | None = None,
     ) -> ImportPage:
         normalized_page = normalize_page(page)
         normalized_page_size = normalize_limit(page_size)
         conn = self._open_app_db()
         try:
             repo = ImportRepository(conn)
-            total = repo.count_imports(status=status, source_type=source_type)
+            total = repo.count_imports(status=status)
             offset = (normalized_page - 1) * normalized_page_size
-            items = repo.list_imports(
-                normalized_page_size,
-                offset,
-                status=status,
-                source_type=source_type,
-            )
+            items = repo.list_imports(normalized_page_size, offset, status=status)
             total_pages = (total + normalized_page_size - 1) // normalized_page_size if total else 0
             return ImportPage(items=items, page=normalized_page, page_size=normalized_page_size, total=total, total_pages=total_pages)
         finally:
@@ -1150,123 +1115,55 @@ class RecordTreeApp:
             results=results,
         )
 
-    def _create_importer(self, path: Path):
-        extension = path.suffix.casefold()
-        if extension in XLSX_EXTENSIONS:
-            return "xlsx", ExcelImporter()
-        if extension in LEGACY_DB_EXTENSIONS:
-            return "legacy_db", LegacyDbImporter()
-        if extension in JSON_EXTENSIONS:
-            return "json", JsonImporter()
-        raise ValidationError(f"Unsupported import file extension: {extension}")
-
     def _open_app_db(self):
         app_config = config_module.load_config(config_module.default_config_path())
         if not app_config.database_path.exists():
             raise ConfigError(f"Database file does not exist: {app_config.database_path}")
         conn = db.connect(app_config.database_path)
+        try:
+            db.require_supported_schema(conn)
+        except Exception:
+            conn.close()
+            raise
         return conn
 
 
-def _import_excel_records(
-    importer: ExcelImporter,
-    source_path: Path,
-    service: ImportService,
-    import_id: int,
-    stats: ImportStats,
-    progress_callback: Callable[[ImportProgress], None] | None,
-    total_rows: int | None,
-    source_type: str,
-) -> None:
-    records_by_key = {}
-    duplicate_keys: set[str] = set()
-    duplicate_rows = 0
-    read_total = total_rows or 0
-    for record in importer.iter_records(source_path):
-        stats.total_rows += 1
-        if isinstance(record, ImportRowError):
-            service.record_error(import_id, record)
-            stats.error_count += 1
-        else:
-            source_key = build_source_key(record)
-            if source_key in records_by_key:
-                duplicate_keys.add(source_key)
-                duplicate_rows += 1
-                records_by_key[source_key] = _merge_import_records(records_by_key[source_key], record)
-            else:
-                records_by_key[source_key] = record
-        _report_import_progress(
-            progress_callback,
-            source_type,
-            source_path,
-            stats.total_rows,
-            total_rows,
-            "Reading",
-        )
+class _ImportProgressReporter:
+    """Forwards import progress about IMPORT_PROGRESS_STEPS times per phase, plus each phase's last row."""
 
-    importer.duplicate_source_keys = len(duplicate_keys)
-    importer.duplicate_rows_merged = duplicate_rows
-    write_total = len(records_by_key)
-    combined_total = read_total + write_total if total_rows is not None else None
-    _report_import_progress(
-        progress_callback,
-        source_type,
-        source_path,
-        stats.total_rows,
-        combined_total,
-        "Writing",
-    )
-    written = 0
-    for record in records_by_key.values():
-        try:
-            result = service.upsert_record(import_id, record)
-        except ImportRowError as error:
-            service.record_error(import_id, error)
-            stats.error_count += 1
-        else:
-            apply_upsert_result(stats, result)
-        written += 1
-        _report_import_progress(
-            progress_callback,
-            source_type,
-            source_path,
-            stats.total_rows + written,
-            combined_total,
-            "Writing",
+    def __init__(self, callback: Callable[[ImportProgress], None] | None, source_path: Path) -> None:
+        self.callback = callback
+        self.source_path = source_path
+        self.phase: str | None = None
+        self.last_reported = 0
+
+    def __call__(self, phase: str, completed_rows: int, total_rows: int | None) -> None:
+        if self.callback is None:
+            return
+        step = max(1, (total_rows or 0) // IMPORT_PROGRESS_STEPS) if total_rows else 1
+        is_new_phase = phase != self.phase
+        if not is_new_phase and completed_rows != total_rows and completed_rows - self.last_reported < step:
+            return
+        self.phase = phase
+        self.last_reported = completed_rows
+        self.callback(
+            ImportProgress(
+                source_path=self.source_path,
+                completed_rows=completed_rows,
+                total_rows=total_rows,
+                phase=phase,
+            )
         )
 
 
-def _merge_import_records(first, second):
-    links_by_key = {}
-    for link in first.links + second.links:
-        key = clean_text(link.mega_url)
-        if key is None or key in links_by_key:
-            continue
-        links_by_key[key] = link
-    merged_links = [
-        LinkItem(
-            link_order=index,
-            mega_url=link.mega_url,
-            file_type=normalize_file_type(link.file_type),
-            size_bytes=link.size_bytes,
-            formatted_size=clean_text(link.formatted_size),
-        )
-        for index, link in enumerate(links_by_key.values(), start=1)
-    ]
-    return replace(first, links=merged_links)
-
-
-def _import_notes(importer) -> str | None:
+def _import_notes(extra_columns: tuple[str, ...], summary: SyncSummary) -> str | None:
     notes: list[str] = []
-    extra_note = _extra_columns_note(getattr(importer, "extra_columns", ()))
-    if extra_note is not None:
-        notes.append(extra_note)
-    duplicate_source_keys = getattr(importer, "duplicate_source_keys", 0)
-    duplicate_rows_merged = getattr(importer, "duplicate_rows_merged", 0)
-    if duplicate_rows_merged:
+    if extra_columns:
+        notes.append("Extra Excel columns ignored: " + ", ".join(extra_columns))
+    if summary.duplicate_rows_merged:
         notes.append(
-            f"Duplicate Excel records merged: {duplicate_source_keys} source keys, "
-            f"{duplicate_rows_merged} extra rows"
+            f"Duplicate Excel records merged: {summary.duplicate_source_keys} source keys, "
+            f"{summary.duplicate_rows_merged} extra rows"
         )
     return "; ".join(notes) if notes else None
 
@@ -1276,41 +1173,6 @@ def _relative_or_absolute(path: Path) -> str:
         return path.resolve().relative_to(Path.cwd().resolve()).as_posix()
     except ValueError:
         return str(path)
-
-
-def _extra_columns_note(extra_columns: tuple[str, ...]) -> str | None:
-    if not extra_columns:
-        return None
-    return "Extra Excel columns ignored: " + ", ".join(extra_columns)
-
-
-def _count_import_rows(importer, source_path: Path) -> int | None:
-    if hasattr(importer, "count_records"):
-        return importer.count_records(source_path)
-    if hasattr(importer, "count_rows"):
-        return importer.count_rows(source_path)
-    return None
-
-
-def _report_import_progress(
-    progress_callback: Callable[[ImportProgress], None] | None,
-    source_type: str,
-    source_path: Path,
-    completed_rows: int,
-    total_rows: int | None,
-    phase: str,
-) -> None:
-    if progress_callback is None:
-        return
-    progress_callback(
-        ImportProgress(
-            source_type=source_type,
-            source_path=source_path,
-            completed_rows=completed_rows,
-            total_rows=total_rows,
-            phase=phase,
-        )
-    )
 
 
 def _export_import_errors(conn, import_id: int, logs_dir: Path) -> Path:

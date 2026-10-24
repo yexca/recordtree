@@ -1,88 +1,75 @@
 # Data Contract
 
-This document describes the public input shapes and persistence rules used by RecordTree.
+This document describes the workbook RecordTree imports and the rules that keep the database in step with it.
 
 ## Excel Workbook
 
-The Excel importer expects one header row and these logical fields:
+RecordTree imports one source: the Record Tree Excel export (`.xlsx` or `.xlsm`). The active sheet has one header row with these columns, each named by its logical field or its export header:
 
-- `actor_raw`
-- `delivery_date`
-- `title`
-- `entry_date`
-- `note`
-- `upload_title`
-- `duplicate_search_raw`
-- `source_name`
-- `mega_json`
-- `size_raw`
+| Field | Export header |
+| --- | --- |
+| `actor_raw` | `声优` |
+| `delivery_date` | `配信日期` |
+| `title` | `标题` |
+| `entry_date` | `录入日期` |
+| `note` | `备注` |
+| `upload_title` | `上传标题` |
+| `duplicate_search_raw` | `重复检索` |
+| `source_name` | `来源` |
+| `mega_json` | `MEGA` |
+| `size_raw` | `容量` |
 
-Known legacy mojibake header aliases are accepted by the importer. Extra columns are ignored and reported in import notes.
+Every column must be present. Extra columns are ignored and reported in import notes. Each row needs a value for `actor_raw`, `title`, `upload_title`, `source_name`, and `mega_json`.
 
 Dates may be typed Excel date cells or ISO-like strings. Blank dates become null. Invalid dates are row-level import errors.
 
 ## MEGA JSON
 
-Each Excel row's `mega_json` is a JSON object. Root fields:
-
-- `FileNames`: optional display name for the MEGA bundle
-- `total`: optional total byte count
-- `FormattedSize`: optional human-readable size
-- `property`: required list of link items
+Each row's `mega_json` is a JSON object whose `property` field is a non-empty list of link items. Other root fields, such as `FileNames`, `total`, and `FormattedSize`, are ignored.
 
 Each `property` item is an object with:
 
 - `Link`: required MEGA URL
-- `Size`: required integer byte count or numeric string
-- `Type`: optional file type, normalized to lower-case with a leading dot
+- `Size`: required non-negative integer byte count or numeric string
+- `Type`: optional; either an extension (`mp4`, `.MP4`) or a full file name (`[actor][date][title][date].mp4`). The extension becomes the link's file type, lower-case with a leading dot. A full file name is also kept as the link's file name.
 - `FormattedSize`: optional human-readable size
 
-Malformed JSON, missing `property`, missing `Link`, or non-integer `Size` produce row-level import errors.
+String values may contain raw control characters such as line breaks, and surrounding whitespace is trimmed. Malformed JSON, a root that is not an object, a missing or empty `property`, a missing `Link`, or an invalid `Size` produce row-level import errors.
 
-## Legacy SQLite
+## Import Synchronization
 
-The legacy SQLite importer requires:
+An import treats the workbook as the complete library and makes the database match it in one transaction:
 
-- Table `author` with columns `author_id`, `name`, `added_date`
-- Table `record` with columns `record_id`, `author_id`, `name`, `date`, `size`, `link`, `added_date`, `downloaded_date`
+- Every valid row is a live record group. Rows with the same `source_key` merge into one group that lists the links of all of them in row order.
+- A MEGA URL has one link row for the life of the database, so download status follows the URL. A URL that appears in more than one row stays on the first row, and each repeat is a `duplicate_url` import error.
+- A row updates the existing group that owns the most of its URLs. A row whose URLs are all unknown updates an unclaimed group with the same `source_key`, and otherwise creates a group. Editing a row's metadata, such as its source, keeps the group id and its download history.
+- Group metadata and each listed link's order, file name, file type, and sizes are updated in place. A link listed under another row moves to that row's group.
+- Groups and links the workbook no longer lists are marked deleted (`is_deleted = 1`) and keep their download history. A later workbook that lists them again restores them.
+- Actors and sources without live record groups are removed, except actors marked as favorites.
 
-Legacy rows are matched to existing active links by URL. A matched URL reuses the existing record group and link. An unmatched URL creates a legacy-only record group and link.
+Row-level errors do not stop an import, and a row that fails to parse counts as absent. A workbook without any valid row fails the import and leaves the database unchanged.
 
-For best metadata preservation, import the primary Excel workbook before importing the legacy SQLite database. In that order, URL matches attach legacy IDs and `legacy_completed` history to Excel-backed record groups instead of creating legacy-only groups first.
+`source_key` is a hash of the normalized actor, delivery date, title, entry date, upload title, and source name.
 
-## Legacy JSON
+## Schema Version
 
-The legacy JSON importer supports a root list. Each author item must be an object with:
-
-- `author`
-- `records`, a list of record objects
-
-Each record object uses the same MEGA JSON fields described above, including a `property` link list. JSON metadata has lower priority than existing Excel metadata when links overlap.
-
-Legacy JSON should be imported after Excel and legacy SQLite. It is intended for compatibility checks and backfill, not as the authoritative metadata source.
-
-## Identity And Link Rules
-
-`source_key` is generated from normalized actor, delivery date, title, entry date, upload title, and source name. The same metadata yields the same key; changing those identity fields yields a different key.
-
-The active link set is hashed from link order, URL, file type, size, and formatted size. Link order is intentionally significant in v1.
-
-When the same `source_key` is imported again with the same active link set, active links are not duplicated. When the link set changes, old active links are marked inactive with `is_deleted = 1`, and the new links become active. Active MEGA URLs must be unique.
+`schema_meta` stores the schema version. RecordTree upgrades a database at or above `OLDEST_SUPPORTED_SCHEMA_VERSION` in place when it opens it. It rejects an older database; move that file aside and import the workbook into a new database.
 
 ## Download Status Values
 
 Download rows and items use these status values:
 
 - `planned`
+- `running`
 - `completed`
 - `failed`
 - `blocked`
 - `cancelled`
-- `legacy_completed`
+- `interrupted`
 
 Search and stats derive record-level labels from active links:
 
-- `all`: every active link has `completed` or `legacy_completed`
+- `all`: every active link has a `completed` download item
 - `partial`: some active links are completed
 - `none`: no active links are completed
 - `unknown`: no active links exist

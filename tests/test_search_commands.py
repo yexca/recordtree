@@ -8,7 +8,7 @@ from recordtree.app import RecordTreeApp
 from recordtree.db import connect
 from recordtree.exceptions import NotFoundError, ValidationError
 from recordtree.importer.service import ImportService
-from recordtree.models import ImportRecord, LinkItem
+from recordtree.models import ImportRecord, ImportStats, LinkItem
 from recordtree.repositories import ImportRepository, utc_now_sql
 
 
@@ -23,7 +23,6 @@ def _record(
     links: list[LinkItem],
 ) -> ImportRecord:
     return ImportRecord(
-        source_type="xlsx",
         actor_raw=actor,
         delivery_date=delivery_date,
         title=title,
@@ -34,10 +33,6 @@ def _record(
         source_name=source,
         size_raw=None,
         size_bytes=sum(link.size_bytes for link in links),
-        mega_file_name=upload_title,
-        mega_total_bytes=sum(link.size_bytes for link in links),
-        mega_formatted_size=None,
-        mega_json="{}",
         source_row_number=2,
         links=links,
     )
@@ -50,10 +45,8 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
-        import_id = ImportRepository(conn).create_import("xlsx", source)
-        service = ImportService(conn)
-        service.upsert_record(
-            import_id,
+        import_id = ImportRepository(conn).create_import(source)
+        records = [
             _record(
                 actor="Actor A",
                 title="ASMR sleep",
@@ -66,9 +59,6 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
                     LinkItem(2, "https://example.invalid/a/2", ".m4a", 200, "200 B"),
                 ],
             ),
-        )
-        service.upsert_record(
-            import_id,
             _record(
                 actor="Actor B",
                 title="music hour",
@@ -78,9 +68,6 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
                 entry_date="2026-02-03",
                 links=[LinkItem(1, "https://example.invalid/b/1", ".mp4", 300, "300 B")],
             ),
-        )
-        service.upsert_record(
-            import_id,
             _record(
                 actor="Actor C",
                 title="Talk",
@@ -90,7 +77,9 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
                 entry_date="2026-03-03",
                 links=[LinkItem(1, "https://example.invalid/c/1", ".mp4", 400, "400 B")],
             ),
-        )
+        ]
+        ImportService(conn).sync(import_id, records, ImportStats())
+
         groups = {
             row["title"]: int(row["id"])
             for row in conn.execute("SELECT id, title FROM record_groups").fetchall()
@@ -100,7 +89,7 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
             for row in conn.execute("SELECT id, mega_url FROM download_links").fetchall()
         }
         _insert_download(conn, groups["ASMR sleep"], links["https://example.invalid/a/1"], "completed")
-        _insert_download(conn, groups["music hour"], links["https://example.invalid/b/1"], "legacy_completed")
+        _insert_download(conn, groups["music hour"], links["https://example.invalid/b/1"], "completed")
         conn.commit()
         return groups
     finally:

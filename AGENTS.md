@@ -19,8 +19,6 @@ Before changing an area, read its docs:
 
 ## Product Boundaries
 
-- `recordtree/` is the application. `legacy/` is reference-only: never import
-  from it and do not change it to make new code work.
 - Dependencies point inward: CLI (`recordtree/cli.py`) and the WebUI API
   (`recordtree/web/`) call the application service layer
   (`recordtree/app.py`), which calls importers, domain helpers, repositories,
@@ -34,15 +32,17 @@ Before changing an area, read its docs:
 - Download status is authoritative at the link level. Record-level labels
   (`all`, `partial`, `none`, `unknown`) are derived from active links and are
   never stored as a separate truth.
-- Excel is the authoritative metadata source; legacy SQLite and legacy JSON
-  are compatibility imports with lower priority. Do not change `source_key`
-  composition or the active link set hash without discussing it first, since
-  both decide whether a re-import creates new record groups.
+- The Record Tree Excel export is the only import source, and each import
+  syncs the database to it. Do not change how an import matches rows to
+  record groups and links (URL ownership, `source_key` composition) without
+  discussing it first, since that decides whether a re-import keeps group ids
+  and download status.
 - Users keep a real database in `config/recordtree.sqlite3`. A schema change
   must upgrade an existing database in place: extend `recordtree/schema.sql`
   for fresh databases, add an idempotent step to `_migrate_schema` in
-  `recordtree/db.py` for existing ones, and raise `schema_version`. Never
-  require a re-import or a fresh database.
+  `recordtree/db.py` for existing ones, and raise `SCHEMA_VERSION` while
+  leaving `OLDEST_SUPPORTED_SCHEMA_VERSION` alone. Never require a re-import
+  or a fresh database.
 
 ## Frontend
 

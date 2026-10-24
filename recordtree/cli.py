@@ -92,7 +92,7 @@ def import_command(
         help="File to import. Without it, a file picker opens, or you are asked for the full path.",
     ),
 ) -> None:
-    """Import a Record Tree workbook, JSON export, or legacy SQLite DB."""
+    """Import a Record Tree workbook as the complete current library."""
     try:
         if path is None:
             path = _choose_import_file()
@@ -111,7 +111,7 @@ def import_command(
                     task_id,
                     completed=event.completed_rows,
                     total=event.total_rows,
-                    description=f"{event.phase} {event.source_type}",
+                    description=event.phase,
                 )
 
             result = RecordTreeApp().import_file(path, progress_callback=update_progress)
@@ -129,9 +129,11 @@ def import_command(
         table.add_row("Total rows", str(result.stats.total_rows))
         table.add_row("Inserted groups", str(result.stats.inserted_groups))
         table.add_row("Updated groups", str(result.stats.updated_groups))
+        table.add_row("Unchanged groups", str(result.stats.unchanged_groups))
+        table.add_row("Removed groups", str(result.stats.removed_groups))
         table.add_row("Link sets changed", str(result.stats.link_sets_changed))
         table.add_row("Inserted links", str(result.stats.inserted_links))
-        table.add_row("Skipped links", str(result.stats.skipped_links))
+        table.add_row("Removed links", str(result.stats.removed_links))
         table.add_row("Errors", str(result.stats.error_count))
         if result.error_csv_path is not None:
             table.add_row("Error CSV", str(result.error_csv_path))
@@ -419,6 +421,7 @@ def _print_record_detail(detail: RecordDetail) -> None:
     link_table = Table(title="Active links")
     link_table.add_column("order", style="cyan")
     link_table.add_column("type")
+    link_table.add_column("file")
     link_table.add_column("size")
     link_table.add_column("status")
     link_table.add_column("url")
@@ -426,6 +429,7 @@ def _print_record_detail(detail: RecordDetail) -> None:
         link_table.add_row(
             str(link.link_order),
             _dash(link.file_type),
+            _dash(link.file_name),
             format_bytes(link.size_bytes),
             link.status,
             preview_url(link.mega_url),
@@ -452,7 +456,6 @@ def _print_stats(result: StatsResult) -> None:
 
     imports = Table(title="Recent imports")
     imports.add_column("id", style="cyan")
-    imports.add_column("type")
     imports.add_column("file")
     imports.add_column("started_at")
     imports.add_column("status")
@@ -461,7 +464,6 @@ def _print_stats(result: StatsResult) -> None:
     for item in result.recent_imports:
         imports.add_row(
             str(item.id),
-            item.source_type,
             item.source_file_name,
             item.started_at,
             item.status,

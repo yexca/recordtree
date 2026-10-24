@@ -26,8 +26,9 @@ function CopyUrl({ url }: { url: string }) {
 }
 
 /**
- * Active links of a record. `compact` drops the URL preview and shows status as an icon,
- * so the table fits a narrow detail drawer without horizontal scrolling.
+ * Active links of a record. `compact` drops the file name and URL preview and shows status as
+ * an icon, so the table fits a narrow detail drawer without horizontal scrolling; the file name
+ * stays available as the type's tooltip.
  */
 export function RecordLinks({ links, compact = false }: { links: LinkSummary[]; compact?: boolean }) {
   return (
@@ -39,6 +40,7 @@ export function RecordLinks({ links, compact = false }: { links: LinkSummary[]; 
             <Table.Th>Type</Table.Th>
             <Table.Th style={{ textAlign: 'right' }}>Size</Table.Th>
             <Table.Th>Status</Table.Th>
+            {compact ? null : <Table.Th>File</Table.Th>}
             <Table.Th>{compact ? '' : 'URL'}</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -46,7 +48,9 @@ export function RecordLinks({ links, compact = false }: { links: LinkSummary[]; 
           {links.map((link) => (
             <Table.Tr key={link.id}>
               <Table.Td className="rt-id">{link.link_order}</Table.Td>
-              <Table.Td className="rt-nowrap">{formatText(link.file_type)}</Table.Td>
+              <Table.Td className="rt-nowrap" title={link.file_name ?? undefined}>
+                {formatText(link.file_type)}
+              </Table.Td>
               <Table.Td className="rt-num">{link.formatted_size || formatBytes(link.size_bytes)}</Table.Td>
               <Table.Td>
                 {compact ? (
@@ -58,6 +62,13 @@ export function RecordLinks({ links, compact = false }: { links: LinkSummary[]; 
                   <StatusBadge value={link.status} />
                 )}
               </Table.Td>
+              {compact ? null : (
+                <Table.Td className="rt-cell-medium">
+                  <Text size="xs" className="rt-truncate" title={link.file_name ?? undefined}>
+                    {formatText(link.file_name)}
+                  </Text>
+                </Table.Td>
+              )}
               <Table.Td style={compact ? { width: 1 } : undefined}>
                 {compact ? (
                   <CopyUrl url={link.mega_url} />

@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import io
 import json
 from pathlib import Path
 import time
 
 import httpx2
+from openpyxl import Workbook
 import pytest
 
 from recordtree.app import RecordTreeApp
 from recordtree.db import connect
 from recordtree.importer.service import ImportService
-from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLoginStatus
+from recordtree.models import ImportRecord, ImportStats, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
 from recordtree.web.jobs import JobManager
 from recordtree.web.serializers import to_json_safe
 
 pytestmark = pytest.mark.anyio
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @pytest.fixture
@@ -33,7 +36,6 @@ class _NestedPathPayload:
 
 def _record() -> ImportRecord:
     return ImportRecord(
-        source_type="xlsx",
         actor_raw="API Actor",
         delivery_date="2026-01-02",
         title="API ASMR title",
@@ -44,10 +46,6 @@ def _record() -> ImportRecord:
         source_name="niconico",
         size_raw=None,
         size_bytes=600,
-        mega_file_name="api",
-        mega_total_bytes=600,
-        mega_formatted_size=None,
-        mega_json="{}",
         source_row_number=2,
         links=[
             LinkItem(1, "https://example.invalid/api/1", ".mp4", 100, "100 B"),
@@ -64,8 +62,8 @@ def _setup_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
-        import_id = ImportRepository(conn).create_import("xlsx", source)
-        ImportService(conn).upsert_record(import_id, _record())
+        import_id = ImportRepository(conn).create_import(source)
+        ImportService(conn).sync(import_id, [_record()], ImportStats())
         group_id = int(conn.execute("SELECT id FROM record_groups").fetchone()[0])
         first_link_id = int(
             conn.execute(
@@ -112,7 +110,7 @@ async def test_health_and_init_endpoints(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["schema_version"] == "2"
+    assert payload["schema_version"] == "3"
     assert Path(payload["database_path"]) == tmp_path / "config" / "recordtree.sqlite3"
     assert (tmp_path / "config" / "recordtree.sqlite3").exists()
 
@@ -131,17 +129,17 @@ async def test_actor_favorites_filter_and_pin_actor_page(
     _setup_record(tmp_path, monkeypatch)
     conn = connect(tmp_path / "config" / "recordtree.sqlite3")
     try:
-        import_id = ImportRepository(conn).create_import("xlsx", tmp_path / "fixture.xlsx")
-        for index, name in enumerate(["Alpha Actor", "Zeta Actor"], start=1):
-            ImportService(conn).upsert_record(
-                import_id,
-                replace(
-                    _record(),
-                    actor_raw=name,
-                    title=f"Other title {index}",
-                    links=[LinkItem(1, f"https://example.invalid/other/{index}", ".mp4", 100, "100 B")],
-                ),
+        import_id = ImportRepository(conn).create_import(tmp_path / "fixture.xlsx")
+        others = [
+            replace(
+                _record(),
+                actor_raw=name,
+                title=f"Other title {index}",
+                links=[LinkItem(1, f"https://example.invalid/other/{index}", ".mp4", 100, "100 B")],
             )
+            for index, name in enumerate(["Alpha Actor", "Zeta Actor"], start=1)
+        ]
+        ImportService(conn).sync(import_id, [_record(), *others], ImportStats())
         conn.commit()
     finally:
         conn.close()
@@ -418,33 +416,11 @@ async def test_import_upload_creates_background_job_and_reports_result(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     RecordTreeApp().init()
-    payload = json.dumps(
-        [
-            {
-                "author": "Upload Actor",
-                "records": [
-                    {
-                        "FileNames": "Upload bundle",
-                        "total": 123,
-                        "FormattedSize": "123 B",
-                        "property": [
-                            {
-                                "Link": "https://example.invalid/upload/1",
-                                "Size": 123,
-                                "FormattedSize": "123 B",
-                                "Type": "mp4",
-                            }
-                        ],
-                    }
-                ],
-            }
-        ]
-    ).encode("utf-8")
 
     async with _test_client() as client:
         response = await client.post(
             "/api/imports",
-            files={"file": ("../unsafe fixture.json", payload, "application/json")},
+            files={"file": ("../unsafe fixture.xlsx", _workbook_bytes(), XLSX_MEDIA_TYPE)},
         )
 
         assert response.status_code == 200
@@ -454,10 +430,9 @@ async def test_import_upload_creates_background_job_and_reports_result(
 
         job = await _wait_for_job(client, job_id)
         assert job["status"] == "completed"
-        assert job["progress"]["completed_rows"] == 1
-        assert job["progress"]["total_rows"] == 1
+        assert job["progress"]["phase"] == "Writing"
+        assert job["progress"]["completed_rows"] == job["progress"]["total_rows"] == 2
         assert job["result"]["import_id"] >= 1
-        assert job["result"]["source_type"] == "json"
         assert job["result"]["status"] == "completed"
         assert job["result"]["stats"]["inserted_groups"] == 1
         assert Path(job["result"]["source_path"]).parent == (tmp_path / "cache" / "uploads").resolve()
@@ -496,7 +471,7 @@ async def test_import_history_detail_and_errors_endpoints(
         source = tmp_path / "history.xlsx"
         source.write_bytes(b"xlsx")
         repo = ImportRepository(conn)
-        import_id = repo.create_import("xlsx", source)
+        import_id = repo.create_import(source)
         repo.add_import_error(import_id, 7, "source-key", "BadRow", "broken row", "{bad}")
         repo.fail_import(import_id, "failed for test")
         conn.commit()
@@ -504,7 +479,7 @@ async def test_import_history_detail_and_errors_endpoints(
         conn.close()
 
     async with _test_client() as client:
-        page = (await client.get("/api/imports", params={"source_type": "xlsx"})).json()
+        page = (await client.get("/api/imports", params={"status": "failed"})).json()
         assert page["total"] == 1
         assert page["items"][0]["id"] == import_id
         assert page["items"][0]["source_file_name"] == "history.xlsx"
@@ -532,7 +507,7 @@ async def test_import_job_reports_failed_status_for_bad_source(
     async with _test_client() as client:
         response = await client.post(
             "/api/imports",
-            files={"file": ("broken.json", b"{not-json", "application/json")},
+            files={"file": ("broken.xlsx", b"not a workbook", XLSX_MEDIA_TYPE)},
         )
 
         assert response.status_code == 200
@@ -882,8 +857,8 @@ def test_to_json_safe_serializes_dataclasses_paths_and_sets(tmp_path: Path) -> N
 
 def test_job_event_stream_waits_for_new_events(tmp_path: Path) -> None:
     manager = JobManager()
-    source = tmp_path / "stream.json"
-    source.write_text("[]", encoding="utf-8")
+    source = tmp_path / "stream.xlsx"
+    source.write_bytes(b"xlsx placeholder")
     job = manager.start_import(source, app_factory=lambda: _BlockingImportApp())
     stream = manager.stream_events(job.id, after=0, keepalive_seconds=1)
 
@@ -891,6 +866,43 @@ def test_job_event_stream_waits_for_new_events(tmp_path: Path) -> None:
     assert "event: running" in next(stream)
     assert "event: progress" in next(stream)
     assert "event: completed" in next(stream)
+
+
+def _workbook_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "actor_raw",
+            "delivery_date",
+            "title",
+            "entry_date",
+            "note",
+            "upload_title",
+            "duplicate_search_raw",
+            "source_name",
+            "mega_json",
+            "size_raw",
+        ]
+    )
+    links = [{"Link": "https://example.invalid/upload/1", "Size": 123, "FormattedSize": "123 B", "Type": "mp4"}]
+    sheet.append(
+        [
+            "Upload Actor",
+            "2026-01-02",
+            "Upload title",
+            "2026-01-03",
+            None,
+            "Upload bundle",
+            None,
+            "Source",
+            json.dumps({"property": links}),
+            "123 B",
+        ]
+    )
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def _test_client() -> httpx2.AsyncClient:
@@ -920,7 +932,6 @@ class _BlockingImportApp:
                     (),
                     {
                         "phase": "Streaming",
-                        "source_type": "json",
                         "source_path": _source_path,
                         "completed_rows": 1,
                         "total_rows": 1,

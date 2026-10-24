@@ -27,7 +27,6 @@ class AppConfig:
     mega_whoami: str
     mega_login: str
     mega_logout: str
-    prefer_xlsx_metadata: bool
 
 
 def default_config() -> dict[str, object]:
@@ -49,9 +48,6 @@ def default_config() -> dict[str, object]:
             "mega_whoami": "mega-whoami",
             "mega_login": "mega-login",
             "mega_logout": "mega-logout",
-        },
-        "import": {
-            "prefer_xlsx_metadata": True,
         },
     }
 
@@ -83,7 +79,6 @@ def load_config(path: Path | None = None) -> AppConfig:
     paths = _section(raw, "paths")
     download = _section(raw, "download")
     mega = _section(raw, "mega")
-    import_config = _section(raw, "import")
 
     database = _string_value(paths, "database", defaults["paths"]["database"])
     downloads = _string_value(paths, "downloads", defaults["paths"]["downloads"])
@@ -117,11 +112,6 @@ def load_config(path: Path | None = None) -> AppConfig:
         mega_whoami=_string_value(mega, "mega_whoami", defaults["mega"]["mega_whoami"]),
         mega_login=_string_value(mega, "mega_login", defaults["mega"]["mega_login"]),
         mega_logout=_string_value(mega, "mega_logout", defaults["mega"]["mega_logout"]),
-        prefer_xlsx_metadata=_bool_value(
-            import_config,
-            "prefer_xlsx_metadata",
-            defaults["import"]["prefer_xlsx_metadata"],
-        ),
     )
 
 
@@ -150,9 +140,6 @@ mega_get = "mega-get"
 mega_whoami = "mega-whoami"
 mega_login = "mega-login"
 mega_logout = "mega-logout"
-
-[import]
-prefer_xlsx_metadata = true
 """
 
 
@@ -209,9 +196,6 @@ mega_get = "{_toml_string(config.mega_get)}"
 mega_whoami = "{_toml_string(config.mega_whoami)}"
 mega_login = "{_toml_string(config.mega_login)}"
 mega_logout = "{_toml_string(config.mega_logout)}"
-
-[import]
-prefer_xlsx_metadata = {_toml_bool(config.prefer_xlsx_metadata)}
 """
 
 

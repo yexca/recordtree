@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sqlite3
+
+import pytest
 
 from recordtree.app import RecordTreeApp
 from recordtree.config import ensure_config, load_config, resolve_path
 from recordtree.db import connect
+from recordtree.exceptions import ConfigError
 
 
 EXPECTED_TABLES = {
@@ -19,22 +23,18 @@ EXPECTED_TABLES = {
     "import_errors",
     "downloads",
     "download_items",
-    "legacy_migration_map",
 }
 
 EXPECTED_INDEXES = {
+    "idx_record_groups_source_key",
     "idx_record_groups_delivery_date",
     "idx_record_groups_entry_date",
     "idx_record_groups_deleted",
-    "idx_record_groups_source_type",
     "idx_actors_normalized",
     "idx_sources_normalized",
     "idx_links_group_active",
-    "idx_links_url",
-    "idx_links_active_url",
     "idx_links_file_type",
     "idx_download_items_link_status",
-    "idx_legacy_map_group",
 }
 
 
@@ -50,8 +50,8 @@ def test_init_creates_paths_and_is_idempotent(tmp_path: Path, monkeypatch) -> No
     assert first.downloads_dir == tmp_path / "downloads"
     assert first.logs_dir == tmp_path / "config" / "logs"
     assert first.cache_dir == tmp_path / "cache"
-    assert first.schema_version == "2"
-    assert second.schema_version == "2"
+    assert first.schema_version == "3"
+    assert second.schema_version == "3"
     assert first.config_path.read_text(encoding="utf-8") == config_text
     assert first.database_path.exists()
     assert first.downloads_dir.is_dir()
@@ -86,8 +86,28 @@ def test_init_schema_tables_indexes_and_foreign_keys(tmp_path: Path, monkeypatch
 
     assert EXPECTED_TABLES <= tables
     assert EXPECTED_INDEXES <= indexes
-    assert schema_version["value"] == "2"
+    assert schema_version["value"] == "3"
     assert foreign_keys == 1
+
+
+def test_database_from_an_unsupported_schema_is_rejected(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    database = tmp_path / "config" / "recordtree.sqlite3"
+    database.parent.mkdir()
+    conn = sqlite3.connect(database)
+    conn.executescript(
+        """
+        CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+        INSERT INTO schema_meta VALUES ('schema_version', '2', '2026-01-01');
+        CREATE TABLE record_groups (id INTEGER PRIMARY KEY, source_type TEXT NOT NULL);
+        """
+    )
+    conn.close()
+
+    with pytest.raises(ConfigError, match="schema version 2"):
+        RecordTreeApp().init()
+    with pytest.raises(ConfigError, match="schema version 2"):
+        RecordTreeApp().stats()
 
 
 def test_ensure_config_does_not_overwrite_existing_file(tmp_path: Path) -> None:

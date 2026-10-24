@@ -246,7 +246,6 @@ class JobManager:
             "progress",
             {
                 "phase": progress.phase,
-                "source_type": progress.source_type,
                 "source_path": progress.source_path,
                 "completed_rows": progress.completed_rows,
                 "total_rows": progress.total_rows,

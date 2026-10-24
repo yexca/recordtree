@@ -195,7 +195,7 @@ function DownloadDrawerBody({
                   {items.map((item) => (
                     <Table.Tr key={item.id}>
                       <Table.Td className="rt-id">{item.link_order}</Table.Td>
-                      <Table.Td>{formatText(item.file_type)}</Table.Td>
+                      <Table.Td title={item.file_name ?? undefined}>{formatText(item.file_type)}</Table.Td>
                       <Table.Td className="rt-num">{item.formatted_size || formatBytes(item.size_bytes)}</Table.Td>
                       <Table.Td>
                         <StatusBadge value={item.status} />

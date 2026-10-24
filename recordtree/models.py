@@ -11,11 +11,12 @@ class LinkItem:
     file_type: str | None
     size_bytes: int
     formatted_size: str | None
+    # Set when the export's Type field carries the full file name instead of only an extension.
+    file_name: str | None = None
 
 
 @dataclass(frozen=True)
 class ImportRecord:
-    source_type: str
     actor_raw: str
     delivery_date: str | None
     title: str
@@ -26,10 +27,6 @@ class ImportRecord:
     source_name: str
     size_raw: str | None
     size_bytes: int | None
-    mega_file_name: str | None
-    mega_total_bytes: int | None
-    mega_formatted_size: str | None
-    mega_json: str | None
     source_row_number: int | None
     links: list[LinkItem]
 
@@ -39,16 +36,16 @@ class ImportStats:
     total_rows: int = 0
     inserted_groups: int = 0
     updated_groups: int = 0
-    skipped_groups: int = 0
+    unchanged_groups: int = 0
+    removed_groups: int = 0
     link_sets_changed: int = 0
     inserted_links: int = 0
-    skipped_links: int = 0
+    removed_links: int = 0
     error_count: int = 0
 
 
 @dataclass(frozen=True)
 class ImportProgress:
-    source_type: str
     source_path: Path
     completed_rows: int
     total_rows: int | None = None
@@ -58,7 +55,6 @@ class ImportProgress:
 @dataclass(frozen=True)
 class ImportResult:
     import_id: int
-    source_type: str
     source_path: Path
     status: str
     stats: ImportStats
@@ -143,6 +139,7 @@ class LinkSummary:
     id: int
     link_order: int
     mega_url: str
+    file_name: str | None
     file_type: str | None
     size_bytes: int
     formatted_size: str | None
@@ -172,7 +169,6 @@ class RecordDetail:
 @dataclass(frozen=True)
 class ImportSummary:
     id: int
-    source_type: str
     source_file_name: str
     started_at: str
     status: str
@@ -183,7 +179,6 @@ class ImportSummary:
 @dataclass(frozen=True)
 class ImportDetail:
     id: int
-    source_type: str
     source_path: str
     source_file_name: str
     source_file_size: int | None
@@ -193,10 +188,11 @@ class ImportDetail:
     total_rows: int
     inserted_groups: int
     updated_groups: int
-    skipped_groups: int
+    unchanged_groups: int
+    removed_groups: int
     link_sets_changed: int
     inserted_links: int
-    skipped_links: int
+    removed_links: int
     error_count: int
     notes: str | None
 
@@ -269,6 +265,7 @@ class DownloadItemDetail:
     link_id: int
     link_order: int
     mega_url: str
+    file_name: str | None
     file_type: str | None
     size_bytes: int
     formatted_size: str | None
@@ -356,6 +353,7 @@ class DownloadLink:
     id: int
     link_order: int
     mega_url: str
+    file_name: str | None
     file_type: str | None
     size_bytes: int
     formatted_size: str | None

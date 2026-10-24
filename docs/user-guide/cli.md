@@ -23,23 +23,15 @@ The `[paths]` section of `config/config.toml` sets the logs, downloads, and cach
 
 ## Import Data
 
-Pass the file to import:
+Pass the Record Tree Excel export to import:
 
 ```bash
 recordtree import "D:/exports/recordtree-export.xlsx"
-recordtree import "D:/exports/legacy-record.sqlite3"
-recordtree import "D:/exports/legacy-record.json"
 ```
 
 Without a path, `recordtree import` opens a file picker. Where no picker can open, such as in a container or an SSH session, it asks for the full path of the file instead. Cancelling the picker stops the import.
 
-Recommended import order:
-
-1. Excel workbook
-2. Legacy SQLite database
-3. Legacy JSON export
-
-Excel is treated as the highest-quality metadata source. Legacy SQLite can attach old download history by matching existing active URLs. JSON is mainly for compatibility and backfill.
+Each import makes the library match the workbook: new rows are added, edited rows are updated, and records the workbook no longer lists are hidden. Download status belongs to each MEGA link, so it survives edits to a row and comes back with a record that reappears in a later workbook. [Import Synchronization](../maintainer-guide/data-contract.md#import-synchronization) has the exact rules.
 
 ## Search And Inspect
 

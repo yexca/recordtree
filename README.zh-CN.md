@@ -1,12 +1,12 @@
 # RecordTree
 
-RecordTree 是一个本地优先的 Record Tree 元数据管理和下载工具。它可以把 Excel、旧 SQLite、旧 JSON 数据导入 SQLite，支持搜索记录，并通过 MEGAcmd 下载选中的 MEGA 链接。
+RecordTree 是一个本地优先的 Record Tree 元数据管理和下载工具。它可以把 Record Tree 的 Excel 导出导入 SQLite，支持搜索记录，并通过 MEGAcmd 下载选中的 MEGA 链接。
 
 本工具不抓取远程来源，也不保存 MEGA 凭据。MEGA 登录状态由 MEGAcmd 自行管理。
 
 ## 功能
 
-- 导入 Excel、旧 SQLite、旧 JSON。
+- 导入 Record Tree 的 Excel 导出；每次导入都会让资料库与表格保持一致，并保留下载状态。
 - 按演员、标题、来源、日期范围和下载状态搜索。
 - 查看记录组、活动链接和下载状态。
 - 通过 MEGAcmd 下载链接。

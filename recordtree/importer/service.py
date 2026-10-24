@@ -1,85 +1,48 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from collections.abc import Callable
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import sqlite3
 
 from recordtree.exceptions import ImportRowError
-from recordtree.models import ImportRecord, LinkItem
-from recordtree.normalizers import (
-    build_link_set_hash,
-    build_source_key,
-    clean_text,
-    normalize_file_type,
-)
+from recordtree.models import ImportRecord, ImportStats, LinkItem
+from recordtree.normalizers import build_source_key
 from recordtree.repositories import (
+    GROUP_METADATA_COLUMNS,
     ActorRepository,
     ImportRepository,
     LinkRepository,
     RecordGroupRepository,
     SourceRepository,
+    group_metadata_values,
 )
 
 
 @dataclass(frozen=True)
-class UpsertResult:
-    inserted_groups: int = 0
-    updated_groups: int = 0
-    skipped_groups: int = 0
-    link_sets_changed: int = 0
-    inserted_links: int = 0
-    skipped_links: int = 0
-    errors_recorded: int = 0
+class SyncSummary:
+    duplicate_source_keys: int = 0
+    duplicate_rows_merged: int = 0
 
 
 class ImportService:
-    def __init__(self, conn: sqlite3.Connection, prefer_xlsx_metadata: bool = True) -> None:
+    """Makes the database mirror one workbook.
+
+    Every valid row becomes a live record group. A row keeps the group that already owns most of
+    its MEGA URLs, so metadata edits such as a source rename keep the group id. A link is identified
+    by its URL, so its download history follows it through link set changes and between groups.
+    Groups and links the workbook no longer lists are marked deleted, and come back when a later
+    workbook lists them again.
+    """
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
-        self.prefer_xlsx_metadata = prefer_xlsx_metadata
         self.imports = ImportRepository(conn)
         self.groups = RecordGroupRepository(conn)
         self.links = LinkRepository(conn)
         self.actors = ActorRepository(conn)
         self.sources = SourceRepository(conn)
-
-    def upsert_record(self, import_id: int, record: ImportRecord) -> UpsertResult:
-        self._validate_record(record)
-        now = _utc_now()
-        source_key = build_source_key(record)
-        group = self.groups.get_group_by_source_key(source_key)
-
-        if group is None:
-            if self._all_links_overlap_xlsx(import_id, record, source_key):
-                return UpsertResult(skipped_groups=1, errors_recorded=len(record.links))
-            group_id = self.groups.insert_group(record, source_key, now)
-            self.actors.ensure_mapping(group_id, record.actor_raw)
-            self.sources.ensure_mapping(group_id, record.source_name)
-            inserted, errors = self._insert_all_links(import_id, group_id, record, now)
-            return UpsertResult(inserted_groups=1, inserted_links=inserted, errors_recorded=errors)
-
-        group_id = int(group["id"])
-        if self._should_preserve_existing_metadata(group_id, record):
-            self.links.touch_active_links(group_id, now)
-            return UpsertResult(skipped_groups=1, skipped_links=len(record.links))
-        self.groups.update_group_seen(group_id, record, now)
-        self.actors.ensure_mapping(group_id, record.actor_raw)
-        self.sources.ensure_mapping(group_id, record.source_name)
-
-        active_links = self.links.list_active_links(group_id)
-        old_hash = build_link_set_hash(_rows_to_link_items(active_links))
-        new_hash = build_link_set_hash(record.links)
-        if old_hash == new_hash:
-            self.links.touch_active_links(group_id, now)
-            return UpsertResult(updated_groups=1, skipped_links=len(record.links))
-
-        self.links.mark_active_links_deleted(group_id, now)
-        inserted, errors = self._insert_all_links(import_id, group_id, record, now)
-        return UpsertResult(
-            updated_groups=1,
-            link_sets_changed=1,
-            inserted_links=inserted,
-            errors_recorded=errors,
-        )
 
     def record_error(self, import_id: int, error: ImportRowError) -> None:
         self.imports.add_import_error(
@@ -91,165 +54,237 @@ class ImportService:
             raw_value=error.raw_value,
         )
 
-    def _insert_all_links(
+    def sync(
         self,
         import_id: int,
+        records: list[ImportRecord],
+        stats: ImportStats,
+        progress: Callable[[int, int], None] | None = None,
+    ) -> SyncSummary:
+        """Writes the records, then retires what they no longer list. `progress` gets (written, total)."""
+        now = _utc_now()
+        records, summary = _merge_duplicate_records(records)
+        records = self._drop_repeated_urls(import_id, records, stats)
+        keys = [build_source_key(record) for record in records]
+        existing_groups = {int(row["id"]): row for row in self.groups.list_all()}
+        existing_links = {row["mega_url"]: row for row in self.links.list_all()}
+        assignment = _assign_groups(records, keys, existing_groups, existing_links)
+        active_urls_by_group: dict[int, set[str]] = defaultdict(set)
+        for row in existing_links.values():
+            if not row["is_deleted"]:
+                active_urls_by_group[int(row["record_group_id"])].add(row["mega_url"])
+
+        listed_groups: set[int] = set()
+        listed_links: set[int] = set()
+        unchanged_links: list[int] = []
+        for index, (record, source_key, group_id) in enumerate(zip(records, keys, assignment), start=1):
+            if group_id is None:
+                group_id = self.groups.insert_group(record, source_key, now)
+                self.actors.replace_mapping(group_id, record.actor_raw)
+                self.sources.replace_mapping(group_id, record.source_name)
+                self._write_links(group_id, record.links, existing_links, now, stats, listed_links, unchanged_links)
+                stats.inserted_groups += 1
+            else:
+                self._update_group(
+                    group_id,
+                    record,
+                    source_key,
+                    existing_groups[group_id],
+                    existing_links,
+                    active_urls_by_group[group_id],
+                    now,
+                    stats,
+                    listed_links,
+                    unchanged_links,
+                )
+            listed_groups.add(group_id)
+            if progress is not None:
+                progress(index, len(records))
+
+        self.links.touch_links(unchanged_links, now)
+        removed_links = [link_id for link_id in self.links.list_active_ids() if link_id not in listed_links]
+        self.links.mark_links_deleted(removed_links, now)
+        removed_groups = [group_id for group_id in self.groups.list_active_ids() if group_id not in listed_groups]
+        self.groups.mark_groups_deleted(removed_groups, now)
+        self.actors.remove_mappings(removed_groups)
+        self.sources.remove_mappings(removed_groups)
+        self.actors.prune_unused()
+        self.sources.prune_unused()
+        stats.removed_links += len(removed_links)
+        stats.removed_groups += len(removed_groups)
+        return summary
+
+    def _update_group(
+        self,
         group_id: int,
         record: ImportRecord,
+        source_key: str,
+        row: sqlite3.Row,
+        existing_links: dict[str, sqlite3.Row],
+        previous_urls: set[str],
         now: str,
-    ) -> tuple[int, int]:
-        inserted = 0
-        errors = 0
-        for raw_item in record.links:
-            item = LinkItem(
-                link_order=raw_item.link_order,
-                mega_url=clean_text(raw_item.mega_url) or "",
-                file_type=normalize_file_type(raw_item.file_type),
-                size_bytes=raw_item.size_bytes,
-                formatted_size=clean_text(raw_item.formatted_size),
-            )
-            existing = self.links.find_active_link_by_url(item.mega_url)
-            if existing is not None and int(existing["record_group_id"]) == group_id:
-                self.links.touch_active_links(group_id, now)
-                continue
-            if existing is not None and self._should_skip_json_overlap(record, existing):
-                self.record_error(
-                    import_id,
-                    ImportRowError(
-                        "json_xlsx_overlap",
-                        f"JSON link already belongs to xlsx record_group_id={existing['record_group_id']}; xlsx metadata preserved.",
-                        row_number=record.source_row_number,
-                        source_key=build_source_key(record),
-                        raw_value=item.mega_url,
-                    ),
-                )
-                errors += 1
-                continue
-            if existing is not None:
-                self.record_error(
-                    import_id,
-                    ImportRowError(
-                        "active_url_conflict",
-                        f"Active URL already belongs to record_group_id={existing['record_group_id']}",
-                        row_number=record.source_row_number,
-                        source_key=build_source_key(record),
-                        raw_value=item.mega_url,
-                    ),
-                )
-                errors += 1
-                continue
-            self.links.insert_link(group_id, item, now)
-            inserted += 1
-        return inserted, errors
-
-    def _all_links_overlap_xlsx(self, import_id: int, record: ImportRecord, source_key: str) -> bool:
-        if not self.prefer_xlsx_metadata or record.source_type != "json" or not record.links:
-            return False
-
-        overlapping: list[tuple[LinkItem, sqlite3.Row]] = []
-        for link in record.links:
-            url = clean_text(link.mega_url)
-            if url is None:
-                return False
-            existing = self.links.find_active_link_by_url(url)
-            if existing is None or not self._row_is_xlsx_group(existing):
-                return False
-            overlapping.append((link, existing))
-
-        for link, existing in overlapping:
-            self.record_error(
-                import_id,
-                ImportRowError(
-                    "json_xlsx_overlap",
-                    f"JSON link already belongs to xlsx record_group_id={existing['record_group_id']}; xlsx metadata preserved.",
-                    row_number=record.source_row_number,
-                    source_key=source_key,
-                    raw_value=link.mega_url,
-                ),
-            )
-        return True
-
-    def _should_preserve_existing_metadata(self, group_id: int, record: ImportRecord) -> bool:
-        if not self.prefer_xlsx_metadata or record.source_type != "json":
-            return False
-        active_links = self.links.list_active_links(group_id)
-        for link in active_links:
-            if self._row_is_xlsx_group(link):
-                return True
-        return False
-
-    def _should_skip_json_overlap(self, record: ImportRecord, existing: sqlite3.Row) -> bool:
-        return (
-            self.prefer_xlsx_metadata
-            and record.source_type == "json"
-            and self._row_is_xlsx_group(existing)
+        stats: ImportStats,
+        listed_links: set[int],
+        unchanged_links: list[int],
+    ) -> None:
+        revived = bool(row["is_deleted"])
+        metadata_changed = tuple(row[column] for column in GROUP_METADATA_COLUMNS) != group_metadata_values(
+            record, source_key
         )
+        if revived or metadata_changed:
+            self.groups.update_group(group_id, record, source_key, now)
+        else:
+            self.groups.touch_group(group_id, record.source_row_number, now)
+        if revived or row["actor_raw"] != record.actor_raw:
+            self.actors.replace_mapping(group_id, record.actor_raw)
+        if revived or row["source_name"] != record.source_name:
+            self.sources.replace_mapping(group_id, record.source_name)
 
-    def _row_is_xlsx_group(self, link: sqlite3.Row) -> bool:
-        row = self.conn.execute(
-            "SELECT source_type FROM record_groups WHERE id = ?",
-            (int(link["record_group_id"]),),
-        ).fetchone()
-        return row is not None and row["source_type"] == "xlsx"
+        links_changed = self._write_links(group_id, record.links, existing_links, now, stats, listed_links, unchanged_links)
+        links_changed = links_changed or bool(previous_urls - {item.mega_url for item in record.links})
+        if links_changed:
+            stats.link_sets_changed += 1
+        if revived or metadata_changed or links_changed:
+            stats.updated_groups += 1
+        else:
+            stats.unchanged_groups += 1
 
-    def _validate_record(self, record: ImportRecord) -> None:
-        required = {
-            "actor_raw": record.actor_raw,
-            "title": record.title,
-            "upload_title": record.upload_title,
-            "source_name": record.source_name,
-        }
-        for field, value in required.items():
-            if clean_text(value) is None:
-                raise ImportRowError(
-                    "required_field_missing",
-                    f"Required field is missing: {field}",
-                    row_number=record.source_row_number,
-                    raw_value=field,
-                )
-        if not record.links:
-            raise ImportRowError(
-                "link_set_empty",
-                "Record has no MEGA links.",
-                row_number=record.source_row_number,
-            )
-        for link in record.links:
-            if clean_text(link.mega_url) is None:
-                raise ImportRowError(
-                    "mega_link_missing",
-                    "MEGA link is missing.",
-                    row_number=record.source_row_number,
-                )
-            if link.size_bytes < 0:
-                raise ImportRowError(
-                    "mega_size_invalid",
-                    "MEGA link size must be non-negative.",
-                    row_number=record.source_row_number,
-                    raw_value=link.size_bytes,
-                )
+    def _write_links(
+        self,
+        group_id: int,
+        items: list[LinkItem],
+        existing_links: dict[str, sqlite3.Row],
+        now: str,
+        stats: ImportStats,
+        listed_links: set[int],
+        unchanged_links: list[int],
+    ) -> bool:
+        changed = False
+        for item in items:
+            existing = existing_links.get(item.mega_url)
+            if existing is None:
+                link_id = self.links.insert_link(group_id, item, now)
+                stats.inserted_links += 1
+                changed = True
+            else:
+                link_id = int(existing["id"])
+                if _link_matches(existing, group_id, item):
+                    unchanged_links.append(link_id)
+                else:
+                    self.links.update_link(link_id, group_id, item, now)
+                    changed = True
+            listed_links.add(link_id)
+        return changed
+
+    def _drop_repeated_urls(
+        self,
+        import_id: int,
+        records: list[ImportRecord],
+        stats: ImportStats,
+    ) -> list[ImportRecord]:
+        """Keeps each MEGA URL on the first row that lists it and reports the repeats."""
+        first_rows: dict[str, int | None] = {}
+        kept: list[ImportRecord] = []
+        for record in records:
+            links: list[LinkItem] = []
+            for item in record.links:
+                if item.mega_url in first_rows:
+                    self.record_error(
+                        import_id,
+                        ImportRowError(
+                            "duplicate_url",
+                            f"MEGA URL is already listed in row {first_rows[item.mega_url]}.",
+                            row_number=record.source_row_number,
+                            source_key=build_source_key(record),
+                            raw_value=item.mega_url,
+                        ),
+                    )
+                    stats.error_count += 1
+                    continue
+                first_rows[item.mega_url] = record.source_row_number
+                links.append(item)
+            if len(links) == len(record.links):
+                kept.append(record)
+            elif links:
+                kept.append(replace(record, links=_renumber(links)))
+        return kept
 
 
-def apply_upsert_result(stats, result: UpsertResult) -> None:
-    stats.inserted_groups += result.inserted_groups
-    stats.updated_groups += result.updated_groups
-    stats.skipped_groups += result.skipped_groups
-    stats.link_sets_changed += result.link_sets_changed
-    stats.inserted_links += result.inserted_links
-    stats.skipped_links += result.skipped_links
-    stats.error_count += result.errors_recorded
+def _merge_duplicate_records(records: list[ImportRecord]) -> tuple[list[ImportRecord], SyncSummary]:
+    """Merges rows with the same source key into one record that lists the links of all of them."""
+    merged: dict[str, ImportRecord] = {}
+    duplicate_keys: set[str] = set()
+    duplicate_rows = 0
+    for record in records:
+        source_key = build_source_key(record)
+        first = merged.get(source_key)
+        if first is None:
+            merged[source_key] = record
+            continue
+        duplicate_keys.add(source_key)
+        duplicate_rows += 1
+        urls = {item.mega_url for item in first.links}
+        extra = [item for item in record.links if item.mega_url not in urls]
+        merged[source_key] = replace(first, links=_renumber(first.links + extra))
+    summary = SyncSummary(duplicate_source_keys=len(duplicate_keys), duplicate_rows_merged=duplicate_rows)
+    return list(merged.values()), summary
 
 
-def _rows_to_link_items(rows: list[sqlite3.Row]) -> list[LinkItem]:
-    return [
-        LinkItem(
-            link_order=int(row["link_order"]),
-            mega_url=row["mega_url"],
-            file_type=row["file_type"],
-            size_bytes=int(row["size_bytes"]),
-            formatted_size=row["formatted_size"],
+def _assign_groups(
+    records: list[ImportRecord],
+    keys: list[str],
+    existing_groups: dict[int, sqlite3.Row],
+    existing_links: dict[str, sqlite3.Row],
+) -> list[int | None]:
+    """Picks the existing group each record updates, or None for a new group.
+
+    A record first claims the group that owns the most of its URLs; a record whose URLs are all new
+    claims an unclaimed group with the same source key. Each group is claimed at most once.
+    """
+    assignment: list[int | None] = [None] * len(records)
+    claimed: set[int] = set()
+    candidates: list[tuple[int, int, int]] = []
+    for index, record in enumerate(records):
+        owners = Counter(
+            int(existing_links[item.mega_url]["record_group_id"])
+            for item in record.links
+            if item.mega_url in existing_links
         )
-        for row in rows
-    ]
+        candidates.extend((-shared, index, group_id) for group_id, shared in owners.items())
+    for _, index, group_id in sorted(candidates):
+        if assignment[index] is None and group_id not in claimed:
+            assignment[index] = group_id
+            claimed.add(group_id)
+
+    groups_by_key: dict[str, list[int]] = defaultdict(list)
+    for group_id, row in existing_groups.items():
+        groups_by_key[row["source_key"]].append(group_id)
+    for index, source_key in enumerate(keys):
+        if assignment[index] is not None:
+            continue
+        # Prefer a live group, then the newest one.
+        for group_id in sorted(groups_by_key.get(source_key, ()), key=lambda gid: (existing_groups[gid]["is_deleted"], -gid)):
+            if group_id not in claimed:
+                assignment[index] = group_id
+                claimed.add(group_id)
+                break
+    return assignment
+
+
+def _link_matches(row: sqlite3.Row, group_id: int, item: LinkItem) -> bool:
+    return (
+        not row["is_deleted"]
+        and int(row["record_group_id"]) == group_id
+        and int(row["link_order"]) == item.link_order
+        and row["file_name"] == item.file_name
+        and row["file_type"] == item.file_type
+        and int(row["size_bytes"]) == item.size_bytes
+        and row["formatted_size"] == item.formatted_size
+    )
+
+
+def _renumber(links: list[LinkItem]) -> list[LinkItem]:
+    return [replace(link, link_order=index) for index, link in enumerate(links, start=1)]
 
 
 def _utc_now() -> str:

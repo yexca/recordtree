@@ -6,7 +6,7 @@ The application does not crawl remote sources and does not store MEGA credential
 
 ## Features
 
-- Import Excel workbooks, legacy SQLite databases, and legacy JSON exports.
+- Import the Record Tree Excel export; each import syncs the library to the workbook and keeps download status.
 - Search records by actor, title, source, date range, and download status.
 - Inspect record groups and active MEGA links.
 - Download selected links through MEGAcmd with disk-space checks.

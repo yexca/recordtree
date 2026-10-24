@@ -33,8 +33,6 @@ Keep fixtures small and synthetic. Tests should use temporary SQLite databases a
 Recommended fixture sizes:
 
 - Excel: 3 to 5 rows
-- JSON: 1 to 2 authors
-- Legacy SQLite: 3 to 5 records
 
 Real personal exports or credentials should not be committed. If manual testing needs sensitive real data, place it under `real_test/` and keep it out of commits.
 

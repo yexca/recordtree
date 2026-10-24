@@ -80,18 +80,10 @@ def create_import(file: Annotated[UploadFile, File()]) -> dict[str, object]:
 @app.get("/api/imports")
 def imports(
     status: str | None = None,
-    source_type: str | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, object]:
-    return _serialize(
-        RecordTreeApp().list_imports(
-            page=page,
-            page_size=page_size,
-            status=status,
-            source_type=source_type,
-        )
-    )
+    return _serialize(RecordTreeApp().list_imports(page=page, page_size=page_size, status=status))
 
 
 @app.get("/api/imports/{import_id}")

@@ -6,8 +6,7 @@ CREATE TABLE IF NOT EXISTS schema_meta (
 
 CREATE TABLE IF NOT EXISTS record_groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_key TEXT NOT NULL UNIQUE,
-    source_type TEXT NOT NULL,
+    source_key TEXT NOT NULL,
     actor_raw TEXT NOT NULL,
     delivery_date TEXT,
     title TEXT NOT NULL,
@@ -18,15 +17,12 @@ CREATE TABLE IF NOT EXISTS record_groups (
     source_name TEXT NOT NULL,
     size_raw TEXT,
     size_bytes INTEGER,
-    mega_file_name TEXT,
-    mega_total_bytes INTEGER,
-    mega_formatted_size TEXT,
-    mega_json TEXT,
     source_row_number INTEGER,
     first_imported_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     is_deleted INTEGER NOT NULL DEFAULT 0,
+    deleted_at TEXT,
     CHECK (is_deleted IN (0, 1))
 );
 
@@ -68,24 +64,21 @@ CREATE TABLE IF NOT EXISTS download_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_group_id INTEGER NOT NULL,
     link_order INTEGER NOT NULL,
-    mega_url TEXT NOT NULL,
+    mega_url TEXT NOT NULL UNIQUE,
+    file_name TEXT,
     file_type TEXT,
     size_bytes INTEGER NOT NULL,
     formatted_size TEXT,
-    content_hash TEXT NOT NULL,
     first_seen_at TEXT NOT NULL,
     last_seen_at TEXT NOT NULL,
     is_deleted INTEGER NOT NULL DEFAULT 0,
     deleted_at TEXT,
-    legacy_record_id INTEGER,
-    legacy_author_id INTEGER,
     FOREIGN KEY (record_group_id) REFERENCES record_groups(id) ON DELETE CASCADE,
     CHECK (is_deleted IN (0, 1))
 );
 
 CREATE TABLE IF NOT EXISTS imports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    source_type TEXT NOT NULL,
     source_path TEXT NOT NULL,
     source_file_name TEXT NOT NULL,
     source_file_size INTEGER,
@@ -95,10 +88,11 @@ CREATE TABLE IF NOT EXISTS imports (
     total_rows INTEGER DEFAULT 0,
     inserted_groups INTEGER DEFAULT 0,
     updated_groups INTEGER DEFAULT 0,
-    skipped_groups INTEGER DEFAULT 0,
+    unchanged_groups INTEGER DEFAULT 0,
+    removed_groups INTEGER DEFAULT 0,
     link_sets_changed INTEGER DEFAULT 0,
     inserted_links INTEGER DEFAULT 0,
-    skipped_links INTEGER DEFAULT 0,
+    removed_links INTEGER DEFAULT 0,
     error_count INTEGER DEFAULT 0,
     notes TEXT
 );
@@ -143,16 +137,8 @@ CREATE TABLE IF NOT EXISTS download_items (
     FOREIGN KEY (link_id) REFERENCES download_links(id) ON DELETE RESTRICT
 );
 
-CREATE TABLE IF NOT EXISTS legacy_migration_map (
-    legacy_record_id INTEGER PRIMARY KEY,
-    legacy_author_id INTEGER NOT NULL,
-    record_group_id INTEGER NOT NULL,
-    link_id INTEGER NOT NULL,
-    legacy_downloaded_date TEXT,
-    migrated_at TEXT NOT NULL,
-    FOREIGN KEY (record_group_id) REFERENCES record_groups(id) ON DELETE CASCADE,
-    FOREIGN KEY (link_id) REFERENCES download_links(id) ON DELETE RESTRICT
-);
+CREATE INDEX IF NOT EXISTS idx_record_groups_source_key
+ON record_groups(source_key);
 
 CREATE INDEX IF NOT EXISTS idx_record_groups_delivery_date
 ON record_groups(delivery_date);
@@ -166,9 +152,6 @@ ON record_groups(is_deleted);
 CREATE INDEX IF NOT EXISTS idx_record_groups_list_order
 ON record_groups(is_deleted, delivery_date DESC, entry_date DESC, id DESC);
 
-CREATE INDEX IF NOT EXISTS idx_record_groups_source_type
-ON record_groups(source_type);
-
 CREATE INDEX IF NOT EXISTS idx_actors_normalized
 ON actors(name_normalized);
 
@@ -178,21 +161,11 @@ ON sources(name_normalized);
 CREATE INDEX IF NOT EXISTS idx_links_group_active
 ON download_links(record_group_id, is_deleted);
 
-CREATE INDEX IF NOT EXISTS idx_links_url
-ON download_links(mega_url);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_links_active_url
-ON download_links(mega_url)
-WHERE is_deleted = 0;
-
 CREATE INDEX IF NOT EXISTS idx_links_file_type
 ON download_links(file_type);
 
 CREATE INDEX IF NOT EXISTS idx_download_items_link_status
 ON download_items(link_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_legacy_map_group
-ON legacy_migration_map(record_group_id);
 
 CREATE INDEX IF NOT EXISTS idx_record_group_actors_actor_group
 ON record_group_actors(actor_id, record_group_id);

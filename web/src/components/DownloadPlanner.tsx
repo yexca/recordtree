@@ -235,7 +235,7 @@ export function DownloadPlanner({ idOrKey, onFinished }: { idOrKey: string; onFi
                         {plan.selected_links.map((link) => (
                           <Table.Tr key={link.id}>
                             <Table.Td className="rt-id">{link.link_order}</Table.Td>
-                            <Table.Td>{formatText(link.file_type)}</Table.Td>
+                            <Table.Td title={link.file_name ?? undefined}>{formatText(link.file_type)}</Table.Td>
                             <Table.Td className="rt-num">{link.formatted_size || formatBytes(link.size_bytes)}</Table.Td>
                           </Table.Tr>
                         ))}

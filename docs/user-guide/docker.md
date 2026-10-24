@@ -82,7 +82,7 @@ Runtime data and the MEGAcmd login survive container recreation because these pa
 The container only sees mounted paths. To import with the CLI, put the file in `./cache` on the host and pass its container path:
 
 ```bash
-docker compose exec recordtree-web recordtree import /app/cache/example.json
+docker compose exec recordtree-web recordtree import /app/cache/example.xlsx
 ```
 
 ## Useful Commands

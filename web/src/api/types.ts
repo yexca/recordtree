@@ -61,7 +61,6 @@ export interface OrphanReport {
 
 export interface ImportSummary {
   id: number;
-  source_type: string;
   source_file_name: string;
   started_at: string;
   status: string;
@@ -71,7 +70,6 @@ export interface ImportSummary {
 
 export interface ImportDetail {
   id: number;
-  source_type: string;
   source_path: string;
   source_file_name: string;
   source_file_size: number | null;
@@ -81,10 +79,11 @@ export interface ImportDetail {
   total_rows: number;
   inserted_groups: number;
   updated_groups: number;
-  skipped_groups: number;
+  unchanged_groups: number;
+  removed_groups: number;
   link_sets_changed: number;
   inserted_links: number;
-  skipped_links: number;
+  removed_links: number;
   error_count: number;
   notes: string | null;
 }
@@ -120,16 +119,16 @@ export interface ImportStats {
   total_rows: number;
   inserted_groups: number;
   updated_groups: number;
-  skipped_groups: number;
+  unchanged_groups: number;
+  removed_groups: number;
   link_sets_changed: number;
   inserted_links: number;
-  skipped_links: number;
+  removed_links: number;
   error_count: number;
 }
 
 export interface ImportResult {
   import_id: number;
-  source_type: string;
   source_path: string;
   status: string;
   stats: ImportStats;
@@ -140,7 +139,6 @@ export interface ImportResult {
 
 export interface JobProgress {
   phase: string;
-  source_type: string;
   source_path: string;
   completed_rows: number;
   total_rows: number | null;
@@ -231,6 +229,7 @@ export interface DownloadItemDetail {
   link_id: number;
   link_order: number;
   mega_url: string;
+  file_name: string | null;
   file_type: string | null;
   size_bytes: number;
   formatted_size: string | null;
@@ -322,6 +321,7 @@ export interface LinkSummary {
   id: number;
   link_order: number;
   mega_url: string;
+  file_name: string | null;
   file_type: string | null;
   size_bytes: number;
   formatted_size: string | null;

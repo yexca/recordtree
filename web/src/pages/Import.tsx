@@ -21,7 +21,7 @@ import { errorMessage, formatBytes, formatDateTime, formatNumber, formatRelative
 import { notifySuccess } from '../lib/notify';
 import { useCachedState } from '../state/pageState';
 
-const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm', '.json', '.db', '.sqlite', '.sqlite3'];
+const ACCEPTED_EXTENSIONS = ['.xlsx', '.xlsm'];
 const HISTORY_PAGE_SIZE = 10;
 const ERROR_PAGE_SIZE = 25;
 
@@ -66,7 +66,7 @@ function UploadPanel({ onStarted }: { onStarted: (job: ImportJob) => void }) {
   };
 
   return (
-    <Panel title="Upload" description="Excel sheets, legacy JSON exports, or legacy SQLite databases.">
+    <Panel title="Upload" description="A full Record Tree Excel export. The library is synced to match it.">
       <Stack gap="md">
         <input
           ref={inputRef}
@@ -197,18 +197,18 @@ function JobPanel({ job, onDismiss }: { job: ImportJob | null; onDismiss: () => 
             <div className="rt-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 10 }}>
               <StatCard compact label="New groups" value={formatNumber(result.stats.inserted_groups)} />
               <StatCard compact label="Updated" value={formatNumber(result.stats.updated_groups)} />
-              <StatCard compact label="New links" value={formatNumber(result.stats.inserted_links)} />
+              <StatCard compact label="Removed" value={formatNumber(result.stats.removed_groups)} />
               <StatCard compact label="Errors" value={formatNumber(result.stats.error_count)} />
             </div>
             <KeyValue
               columns={2}
               items={[
                 { label: 'Import ID', value: `#${result.import_id}` },
-                { label: 'Source type', value: result.source_type },
                 { label: 'Total rows', value: formatNumber(result.stats.total_rows) },
-                { label: 'Skipped groups', value: formatNumber(result.stats.skipped_groups) },
+                { label: 'Unchanged groups', value: formatNumber(result.stats.unchanged_groups) },
                 { label: 'Link sets changed', value: formatNumber(result.stats.link_sets_changed) },
-                { label: 'Skipped links', value: formatNumber(result.stats.skipped_links) },
+                { label: 'New links', value: formatNumber(result.stats.inserted_links) },
+                { label: 'Removed links', value: formatNumber(result.stats.removed_links) },
                 ...(result.error_csv_path ? [{ label: 'Error CSV', value: result.error_csv_path, mono: true, full: true }] : []),
                 ...(result.extra_columns.length
                   ? [{ label: 'Extra columns', value: result.extra_columns.join(', '), full: true }]
@@ -257,17 +257,17 @@ function ImportDrawerBody({ item }: { item: ImportDetail }) {
       <KeyValue
         items={[
           { label: 'File', value: item.source_file_name, full: true },
-          { label: 'Source type', value: item.source_type },
           { label: 'File size', value: formatBytes(item.source_file_size) },
           { label: 'Started', value: formatDateTime(item.started_at) },
           { label: 'Finished', value: formatDateTime(item.finished_at) },
           { label: 'Total rows', value: formatNumber(item.total_rows) },
           { label: 'New groups', value: formatNumber(item.inserted_groups) },
           { label: 'Updated groups', value: formatNumber(item.updated_groups) },
-          { label: 'Skipped groups', value: formatNumber(item.skipped_groups) },
+          { label: 'Unchanged groups', value: formatNumber(item.unchanged_groups) },
+          { label: 'Removed groups', value: formatNumber(item.removed_groups) },
           { label: 'Link sets changed', value: formatNumber(item.link_sets_changed) },
           { label: 'New links', value: formatNumber(item.inserted_links) },
-          { label: 'Skipped links', value: formatNumber(item.skipped_links) },
+          { label: 'Removed links', value: formatNumber(item.removed_links) },
           { label: 'Errors', value: formatNumber(item.error_count) },
           { label: 'Source path', value: item.source_path, mono: true, full: true },
           ...(item.notes ? [{ label: 'Notes', value: item.notes, full: true }] : []),
@@ -456,9 +456,7 @@ export default function ImportPage() {
                       <span className="rt-record-title rt-truncate" title={item.source_path}>
                         {item.source_file_name}
                       </span>
-                      <span className="rt-record-sub">
-                        {item.source_type} · {formatBytes(item.source_file_size)}
-                      </span>
+                      <span className="rt-record-sub">{formatBytes(item.source_file_size)}</span>
                     </Table.Td>
                     <Table.Td>
                       <StatusBadge value={item.status} />

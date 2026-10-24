@@ -13,7 +13,8 @@ recordtree list-undownloaded --actor-id <actor-id>
 ## Common Issues
 
 - Missing config or database: run `recordtree init`.
-- Unsupported import extension: use `.xlsx`, `.xlsm`, `.json`, `.db`, `.sqlite`, or `.sqlite3`.
+- Unsupported import extension: import the Excel export as `.xlsx` or `.xlsm`.
+- Database uses an unsupported schema version: the file was written for an older workbook format. Move it aside, run `recordtree init`, and import the workbook again.
 - Import row errors: check `config/logs/import_<import_id>_errors.csv`.
 - MEGAcmd missing: install MEGAcmd and ensure `mega-get` and `mega-whoami` are on `PATH`, or configure executable paths in `config/config.toml`.
 - Not logged in: run `mega-login`, then run `recordtree doctor`.
@@ -21,7 +22,7 @@ recordtree list-undownloaded --actor-id <actor-id>
 
 ## Backups
 
-Before importing large legacy databases or doing large re-imports, back up:
+Before an import, back up:
 
 - `config/recordtree.sqlite3`
 - `config/recordtree.sqlite3-wal`, if present

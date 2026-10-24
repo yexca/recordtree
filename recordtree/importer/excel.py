@@ -14,37 +14,24 @@ from .parsers import parse_mega_json
 
 
 HEADER_ALIASES = {
-    "actor_raw": {"actor_raw", "actor", "演员", "声优", "澹颁紭"},
-    "delivery_date": {"delivery_date", "配信日期", "閰嶄俊鏃ユ湡"},
-    "title": {"title", "标题", "鏍囬"},
-    "entry_date": {"entry_date", "录入日期", "褰曞叆鏃ユ湡"},
-    "note": {"note", "备注", "澶囨敞"},
-    "upload_title": {"upload_title", "上传标题", "涓婁紶鏍囬"},
-    "duplicate_search_raw": {"duplicate_search_raw", "重复检索", "閲嶅妫€绱"},
-    "source_name": {"source_name", "来源", "鏉ユ簮"},
-    "mega_json": {"mega_json", "MEGA", "mega"},
-    "size_raw": {"size_raw", "容量", "瀹归噺"},
+    "actor_raw": {"actor_raw", "声优"},
+    "delivery_date": {"delivery_date", "配信日期"},
+    "title": {"title", "标题"},
+    "entry_date": {"entry_date", "录入日期"},
+    "note": {"note", "备注"},
+    "upload_title": {"upload_title", "上传标题"},
+    "duplicate_search_raw": {"duplicate_search_raw", "重复检索"},
+    "source_name": {"source_name", "来源"},
+    "mega_json": {"mega_json", "MEGA"},
+    "size_raw": {"size_raw", "容量"},
 }
 
-REQUIRED_FIELDS = {
-    "actor_raw",
-    "delivery_date",
-    "title",
-    "entry_date",
-    "note",
-    "upload_title",
-    "duplicate_search_raw",
-    "source_name",
-    "mega_json",
-    "size_raw",
-}
+REQUIRED_FIELDS = frozenset(HEADER_ALIASES)
 
 
 class ExcelImporter:
     def __init__(self) -> None:
         self.extra_columns: tuple[str, ...] = ()
-        self.duplicate_source_keys = 0
-        self.duplicate_rows_merged = 0
 
     def count_records(self, path: Path) -> int:
         workbook = load_workbook(path, read_only=True, data_only=True)
@@ -143,9 +130,8 @@ def _parse_row(values: tuple[object, ...], mapping: dict[str, int], row_number: 
         ) from error
 
     size_raw = clean_text(value("size_raw"))
-    mega_payload = parse_mega_json(value("mega_json"), row_number)
+    links = parse_mega_json(value("mega_json"), row_number)
     return ImportRecord(
-        source_type="xlsx",
         actor_raw=clean_text(value("actor_raw")) or "",
         delivery_date=delivery_date,
         title=clean_text(value("title")) or "",
@@ -156,12 +142,8 @@ def _parse_row(values: tuple[object, ...], mapping: dict[str, int], row_number: 
         source_name=clean_text(value("source_name")) or "",
         size_raw=size_raw,
         size_bytes=parse_size_text(size_raw),
-        mega_file_name=mega_payload.file_names,
-        mega_total_bytes=mega_payload.total_bytes,
-        mega_formatted_size=mega_payload.formatted_size,
-        mega_json=clean_text(value("mega_json")),
         source_row_number=row_number,
-        links=mega_payload.links,
+        links=links,
     )
 
 

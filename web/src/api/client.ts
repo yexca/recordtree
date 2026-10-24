@@ -212,7 +212,7 @@ export const api = {
     body.append('file', file);
     return readJson<JobCreateResponse>(await fetch('/api/imports', { method: 'POST', body }));
   },
-  imports: (query: { status?: string; source_type?: string; page: number; page_size: number }) =>
+  imports: (query: { status?: string; page: number; page_size: number }) =>
     request<ImportPage>(`/api/imports${params(query)}`),
   importDetail: (importId: number) => request<ImportDetail>(`/api/imports/${importId}`),
   importErrors: (importId: number, page: number, pageSize: number) =>

@@ -69,7 +69,7 @@ class SearchService:
                               SELECT 1
                               FROM download_items di
                               WHERE di.link_id = dl.id
-                                AND di.status IN ('completed', 'legacy_completed')
+                                AND di.status = 'completed'
                           )
                     )
                     THEN rg.id
@@ -189,7 +189,7 @@ class SearchService:
                               SELECT 1
                               FROM download_items di
                               WHERE di.link_id = dl.id
-                                AND di.status IN ('completed', 'legacy_completed')
+                                AND di.status = 'completed'
                           )
                     )
                     THEN rg.id
@@ -241,7 +241,7 @@ class SearchService:
                               SELECT 1
                               FROM download_items di
                               WHERE di.link_id = dl.id
-                                AND di.status IN ('completed', 'legacy_completed')
+                                AND di.status = 'completed'
                           )
                     )
                     THEN rg.id
@@ -351,7 +351,7 @@ class SearchService:
                               SELECT 1
                               FROM download_items di
                               WHERE di.link_id = dl.id
-                                AND di.status IN ('completed', 'legacy_completed')
+                                AND di.status = 'completed'
                           )
                     )
                     THEN rg.id
@@ -556,7 +556,7 @@ class SearchService:
                       SELECT 1
                       FROM download_items di
                       WHERE di.link_id = dl.id
-                        AND di.status IN ('completed', 'legacy_completed')
+                        AND di.status = 'completed'
                   )
             )
             """,
@@ -623,6 +623,7 @@ class SearchService:
                 id=int(link["id"]),
                 link_order=int(link["link_order"]),
                 mega_url=link["mega_url"],
+                file_name=link["file_name"],
                 file_type=link["file_type"],
                 size_bytes=int(link["size_bytes"]),
                 formatted_size=link["formatted_size"],
@@ -691,12 +692,13 @@ class SearchService:
                 id=link.id,
                 link_order=link.link_order,
                 mega_url=link.mega_url,
+                file_name=link.file_name,
                 file_type=link.file_type,
                 size_bytes=link.size_bytes,
                 formatted_size=link.formatted_size,
             )
             for link in detail.links
-            if not only_undownloaded or link.status not in {"completed", "legacy_completed"}
+            if not only_undownloaded or link.status != "completed"
         ]
         should_include_par2 = include_par2 or include_par2_by_default
         if not should_include_par2:
@@ -774,7 +776,7 @@ class SearchService:
                     JOIN download_items di ON di.link_id = dl.id
                     WHERE dl.record_group_id = rg.id
                       AND dl.is_deleted = 0
-                      AND di.status IN ('completed', 'legacy_completed')
+                      AND di.status = 'completed'
                 ) AS completed_count
             FROM record_groups rg
             WHERE rg.is_deleted = 0
@@ -785,7 +787,6 @@ class SearchService:
         imports = [
             ImportSummary(
                 id=int(row["id"]),
-                source_type=row["source_type"],
                 source_file_name=row["source_file_name"],
                 started_at=row["started_at"],
                 status=row["status"],
@@ -854,7 +855,7 @@ class SearchService:
                        JOIN download_items di ON di.link_id = dl.id
                        WHERE dl.record_group_id = rg.id
                          AND dl.is_deleted = 0
-                         AND di.status IN ('completed', 'legacy_completed')
+                         AND di.status = 'completed'
                    ) AS completed_count
             FROM record_groups rg
             {where_sql}
@@ -887,7 +888,7 @@ class SearchService:
                        JOIN download_items di ON di.link_id = dl.id
                        WHERE dl.record_group_id = rg.id
                          AND dl.is_deleted = 0
-                         AND di.status IN ('completed', 'legacy_completed')
+                         AND di.status = 'completed'
                    ) AS completed_count
             FROM record_groups rg
             {where_sql}
@@ -1037,7 +1038,7 @@ class SearchService:
                     JOIN download_items di ON di.link_id = dl.id
                     WHERE dl.record_group_id = ?
                       AND dl.is_deleted = 0
-                      AND di.status IN ('completed', 'legacy_completed')
+                      AND di.status = 'completed'
                 ) AS completed_count
             """,
             (group_id, group_id),
@@ -1180,7 +1181,7 @@ def _completed_count_sql() -> str:
         JOIN download_items di ON di.link_id = dl.id
         WHERE dl.record_group_id = rg.id
           AND dl.is_deleted = 0
-          AND di.status IN ('completed', 'legacy_completed')
+          AND di.status = 'completed'
     )
     """
 
@@ -1196,7 +1197,7 @@ def _undownloaded_exists_sql() -> str:
               SELECT 1
               FROM download_items di
               WHERE di.link_id = dl.id
-                AND di.status IN ('completed', 'legacy_completed')
+                AND di.status = 'completed'
           )
     )
     """

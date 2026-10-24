@@ -9,6 +9,7 @@ so the real ``config/`` is never touched. Fake MEGA URLs point at ``example.inva
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 import os
 import random
 import shutil
@@ -20,7 +21,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from recordtree.app import RecordTreeApp  # noqa: E402
 from recordtree.db import connect  # noqa: E402
-from recordtree.importer.service import ImportService, apply_upsert_result  # noqa: E402
+from recordtree.importer.service import ImportService  # noqa: E402
 from recordtree.models import ImportRecord, ImportStats, LinkItem  # noqa: E402
 from recordtree.repositories import DownloadRepository, ImportRepository  # noqa: E402
 
@@ -76,8 +77,10 @@ def _record(rng: random.Random, index: int) -> ImportRecord:
         )
     year = rng.choice([2022, 2023, 2024, 2024, 2025, 2025, 2026])
     delivered = None if rng.random() < 0.05 else f"{year}-{rng.randint(1, 12):02d}-{rng.randint(1, 28):02d}"
+    if rng.random() < 0.5:
+        # Current exports often put the full file name in the Type field.
+        links = [replace(link, file_name=f"[{actor}][{delivered}][{title}]{link.file_type}") for link in links]
     return ImportRecord(
-        source_type="xlsx",
         actor_raw=actor,
         delivery_date=delivered,
         title=title,
@@ -88,10 +91,6 @@ def _record(rng: random.Random, index: int) -> ImportRecord:
         source_name=rng.choice(PLATFORMS),
         size_raw=f"{total / GB:.1f} GB",
         size_bytes=total,
-        mega_file_name=None,
-        mega_total_bytes=None,
-        mega_formatted_size=None,
-        mega_json=None,
         source_row_number=index + 2,
         links=links,
     )
@@ -105,12 +104,9 @@ def seed(root: Path, count: int, seed_value: int) -> None:
         source = root / "demo-records.xlsx"
         source.write_bytes(b"demo placeholder")
         imports = ImportRepository(conn)
-        import_id = imports.create_import("xlsx", source)
-        service = ImportService(conn)
-        stats = ImportStats()
-        for index in range(count):
-            apply_upsert_result(stats, service.upsert_record(import_id, _record(rng, index)))
-        stats.total_rows = count
+        import_id = imports.create_import(source)
+        stats = ImportStats(total_rows=count)
+        ImportService(conn).sync(import_id, [_record(rng, index) for index in range(count)], stats)
         imports.finish_import(import_id, stats, "completed")
 
         groups: dict[int, list[tuple[int, int]]] = {}

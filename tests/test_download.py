@@ -9,13 +9,12 @@ from recordtree.app import RecordTreeApp
 from recordtree.db import connect
 from recordtree.exceptions import ValidationError
 from recordtree.importer.service import ImportService
-from recordtree.models import ImportRecord, LinkItem, MegaCommandResult, MegaLoginStatus
+from recordtree.models import ImportRecord, ImportStats, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 
 
 def _record() -> ImportRecord:
     return ImportRecord(
-        source_type="xlsx",
         actor_raw="Download Actor",
         delivery_date="2026-01-02",
         title="Download title",
@@ -26,10 +25,6 @@ def _record() -> ImportRecord:
         source_name="Source",
         size_raw=None,
         size_bytes=600,
-        mega_file_name="bundle",
-        mega_total_bytes=600,
-        mega_formatted_size=None,
-        mega_json="{}",
         source_row_number=2,
         links=[
             LinkItem(1, "https://example.invalid/d/1", ".mp4", 100, "100 B"),
@@ -41,7 +36,6 @@ def _record() -> ImportRecord:
 
 def _actor_record(index: int) -> ImportRecord:
     return ImportRecord(
-        source_type="xlsx",
         actor_raw="Batch Actor",
         delivery_date=f"2026-01-{index:02d}",
         title=f"Batch title {index}",
@@ -52,10 +46,6 @@ def _actor_record(index: int) -> ImportRecord:
         source_name="Source",
         size_raw=None,
         size_bytes=100,
-        mega_file_name=f"batch-{index}",
-        mega_total_bytes=100,
-        mega_formatted_size=None,
-        mega_json="{}",
         source_row_number=index,
         links=[LinkItem(1, f"https://example.invalid/batch/{index}", ".mp4", 100, "100 B")],
     )
@@ -68,8 +58,8 @@ def _setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
-        import_id = ImportRepository(conn).create_import("xlsx", source)
-        ImportService(conn).upsert_record(import_id, _record())
+        import_id = ImportRepository(conn).create_import(source)
+        ImportService(conn).sync(import_id, [_record()], ImportStats())
         group_id = int(conn.execute("SELECT id FROM record_groups").fetchone()[0])
         conn.commit()
         return group_id
@@ -84,10 +74,8 @@ def _setup_batch_actor(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> int:
     try:
         source = tmp_path / "fixture.xlsx"
         source.write_bytes(b"xlsx placeholder")
-        import_id = ImportRepository(conn).create_import("xlsx", source)
-        service = ImportService(conn)
-        for index in range(1, 6):
-            service.upsert_record(import_id, _actor_record(index))
+        import_id = ImportRepository(conn).create_import(source)
+        ImportService(conn).sync(import_id, [_actor_record(index) for index in range(1, 6)], ImportStats())
         actor_id = int(conn.execute("SELECT id FROM actors WHERE name = ?", ("Batch Actor",)).fetchone()[0])
         conn.commit()
         return actor_id
