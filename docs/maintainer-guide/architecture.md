@@ -1,6 +1,6 @@
 # Architecture
 
-RecordTreeDownloader SQLite is a local, single-process CLI application. It reads local source files, writes a local SQLite database, and delegates actual downloads to MEGAcmd through subprocess calls.
+RecordTree is a local, single-process CLI application. It reads local source files, writes a local SQLite database, and delegates actual downloads to MEGAcmd through subprocess calls.
 
 ## Layers
 

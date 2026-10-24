@@ -29,7 +29,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="RecordTreeDownloader API", lifespan=lifespan)
+app = FastAPI(title="RecordTree API", lifespan=lifespan)
 job_manager = JobManager()
 UPLOAD_DIR = Path("files/uploads")
 ALLOWED_IMPORT_EXTENSIONS = {".xlsx", ".xlsm", ".json", ".db", ".sqlite", ".sqlite3"}

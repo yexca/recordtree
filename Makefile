@@ -10,7 +10,7 @@ NPM ?= npm
 NODE ?= node
 GO ?= go
 DOCKER ?= docker
-DOCKER_IMAGE ?= recordtree-downloader-sqlite:dev
+DOCKER_IMAGE ?= recordtree:dev
 ACTIONLINT_VERSION ?= v1.7.12
 
 python-install:

@@ -5,6 +5,11 @@
       "url": "https://mega.nz/linux/repo/Debian_12/amd64/megacmd-Debian_12_amd64.deb",
       "files": ["Dockerfile", "Dockerfile.dev"],
       "reason": "Official public MEGAcmd Debian package installed into the runtime and development images."
+    },
+    {
+      "url": "https://raw.githubusercontent.com/yexca/recordtree/main/docker-compose.yml",
+      "files": ["README.md", "README.zh-CN.md", "docs/user-guide/docker.md"],
+      "reason": "Public download location of this repository's Compose file for running the published image."
     }
   ]
 }

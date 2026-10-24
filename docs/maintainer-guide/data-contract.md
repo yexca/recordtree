@@ -1,6 +1,6 @@
 # Data Contract
 
-This document describes the public input shapes and persistence rules used by RecordTreeDownloader SQLite.
+This document describes the public input shapes and persistence rules used by RecordTree.
 
 ## Excel Workbook
 
