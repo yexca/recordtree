@@ -32,6 +32,11 @@
       "reason": "Public PyPI file host of the locked Python package distributions."
     },
     {
+      "url": "https://registry.npmjs.org/**",
+      "files": ["web/package-lock.json"],
+      "reason": "Official public npm registry URLs for the locked frontend package distributions."
+    },
+    {
       "url": "https://astral.sh/uv/*/install.ps1",
       "files": ["run-install.bat"],
       "reason": "Official versioned uv installer that run-install.bat runs when uv is not on PATH."
