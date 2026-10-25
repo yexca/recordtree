@@ -53,7 +53,7 @@ Row-level errors do not stop an import, and a row that fails to parse counts as 
 
 ## Schema Version
 
-`schema_meta` stores the schema version. RecordTree upgrades a database at or above `OLDEST_SUPPORTED_SCHEMA_VERSION` in place when it opens it. It rejects an older database; move that file aside and import the workbook into a new database.
+`schema_meta` stores the schema version. RecordTree supports versions from `OLDEST_SUPPORTED_SCHEMA_VERSION` through `SCHEMA_VERSION`, inclusive, and upgrades supported older databases in place during initialization. It rejects versions outside this range. Open a newer database with a newer RecordTree release. For a database below the oldest supported version, move that file aside and import the workbook into a new database.
 
 ## Download Status Values
 
@@ -73,3 +73,5 @@ Search and stats derive record-level labels from active links:
 - `partial`: some active links are completed
 - `none`: no active links are completed
 - `unknown`: no active links exist
+
+Download attempts and all planned items are saved before transfers start. Each item's running and final states are committed separately, so MEGAcmd runs without holding a database write transaction. Initialization marks unfinished attempts and items as `interrupted`, preserving completed items for resume.

@@ -66,3 +66,7 @@ run-install.bat
 - 敏感的手动测试资料请放在 `real_test/`，该目录已被 Git 忽略。
 - `config/` 保存数据库、日志；Docker WebUI 运行时还在 `config/mega` 中保存 MEGAcmd 登录会话。请把它当作敏感数据。
 - `env/` 只存放可以重新生成的文件，例如 `run-install.bat` 安装的 uv 和 Python 运行时。删除它不会丢失数据。
+
+## 许可证
+
+RecordTree 使用 GNU Affero General Public License 第 3 版（仅限此版本，`AGPL-3.0-only`）。完整条款见 [LICENSE](LICENSE)。

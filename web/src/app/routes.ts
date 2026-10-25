@@ -31,7 +31,7 @@ export interface Route {
   query: string;
 }
 
-/** Parses `#/...?query` hashes. Legacy paths (`#/search`, `#/platform`, `#/status`) stay valid. */
+/** Parses `#/...?query` hashes. */
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, '');
   const queryAt = raw.indexOf('?');
@@ -41,18 +41,15 @@ export function parseHash(hash: string): Route {
 }
 
 function parsePath(path: string): Omit<Route, 'query'> {
-  const [head = '', second, third] = path.split('/').map(decodeURIComponent);
+  const [head = '', second] = path.split('/').map(decodeURIComponent);
   switch (head) {
     case 'records':
       return second ? { name: 'record', recordId: second } : { name: 'records' };
-    case 'search':
-      return second === 'records' && third ? { name: 'record', recordId: third } : { name: 'records' };
     case 'actors': {
       const actorId = Number(second);
       return second && Number.isInteger(actorId) && actorId > 0 ? { name: 'actor', actorId } : { name: 'actors' };
     }
     case 'platforms':
-    case 'platform':
       return { name: 'platforms' };
     case 'import':
       return { name: 'import' };
@@ -61,7 +58,6 @@ function parsePath(path: string): Omit<Route, 'query'> {
     case 'settings':
       return { name: 'settings', section: second };
     case 'maintenance':
-    case 'status':
       return { name: 'maintenance' };
     default:
       return { name: 'dashboard' };

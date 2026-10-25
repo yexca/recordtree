@@ -894,12 +894,16 @@ class RecordTreeApp:
             log_path = _download_log_path(app_config.logs_dir, download_id)
             downloads.set_download_log_path(download_id, log_path)
             log_callback = _download_output_logger(log_path, output_callback)
+            items = [(link, downloads.create_download_item(download_id, link.id)) for link in plan.selected_links]
+            conn.commit()
             completed = 0
             failed = 0
             last_exit_code: int | None = None
-            for link in plan.selected_links:
-                item_id = downloads.create_download_item(download_id, link.id)
+            downloads.update_download_status(download_id, "running")
+            for link, item_id in items:
                 downloads.start_download_item(item_id)
+                # Persist recovery state and release SQLite's writer lock before MEGAcmd runs.
+                conn.commit()
                 try:
                     result = mega.download_link(
                         mega_get,
@@ -917,6 +921,7 @@ class RecordTreeApp:
                 else:
                     failed += 1
                     downloads.finish_download_item(item_id, "failed", result.exit_code, message)
+                conn.commit()
 
             status = "completed" if failed == 0 else "failed"
             downloads.update_download_status(

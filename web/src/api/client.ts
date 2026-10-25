@@ -121,8 +121,6 @@ export const api = {
   actor: (actorId: number) => request<ActorSummary>(`/api/actors/${actorId}`),
   setActorFavorite: (actorId: number, favorite: boolean) =>
     request<ActorSummary>(`/api/actors/${actorId}/favorite`, { method: favorite ? 'PUT' : 'DELETE' }),
-  actorRecords: (actorId: number, limit: number) =>
-    request<RecordSummary[]>(`/api/actors/${actorId}/records${params({ limit })}`),
   platforms: (query: string, limit: number) =>
     request<PlatformSummary[]>(`/api/platforms${params({ query, limit })}`),
   platformPage: (query: string, page: number, pageSize: number) =>
@@ -157,14 +155,6 @@ export const api = {
     date_to?: string;
     file_type?: string;
   }) => request<RecordStatusCounts>(`/api/records/status-counts${params(query)}`),
-  searchTitle: (query: string, limit: number) =>
-    request<RecordSummary[]>(`/api/records/search/title${params({ query, limit })}`),
-  searchSource: (query: string, limit: number) =>
-    request<RecordSummary[]>(`/api/records/search/source${params({ query, limit })}`),
-  searchDate: (from: string, to: string, limit: number) =>
-    request<RecordSummary[]>(`/api/records/search/date${params({ from, to, limit })}`),
-  undownloaded: (actor: string, source: string, limit: number) =>
-    request<RecordSummary[]>(`/api/records/undownloaded${params({ actor, source, limit })}`),
   record: (idOrKey: string) => request<RecordDetail>(`/api/records/${encodeURIComponent(idOrKey)}`),
   downloadPlan: (idOrKey: string, body: { link_ids: number[]; output?: string | null }) =>
     request<DownloadPlan>(`/api/records/${encodeURIComponent(idOrKey)}/download-plan`, {

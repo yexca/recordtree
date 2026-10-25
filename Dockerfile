@@ -10,6 +10,8 @@ RUN npm run build
 
 FROM python:3.12-slim-bookworm
 
+LABEL org.opencontainers.image.licenses="AGPL-3.0-only"
+
 # uv builds the environment from uv.lock with the image's Python and never
 # downloads another one.
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -34,7 +36,7 @@ RUN apt-get update \
 # Dependencies install before the source is copied, so a source change keeps
 # their layer. The project installs editable, because the API serves web/dist
 # relative to the source tree.
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN uv sync --locked --no-dev --extra web --no-install-project
 
 COPY recordtree ./recordtree

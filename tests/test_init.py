@@ -7,7 +7,7 @@ import pytest
 
 from recordtree.app import RecordTreeApp
 from recordtree.config import ensure_config, load_config, resolve_path
-from recordtree.db import connect
+from recordtree.db import SCHEMA_VERSION, connect
 from recordtree.exceptions import ConfigError
 
 
@@ -118,6 +118,27 @@ def test_ensure_config_does_not_overwrite_existing_file(tmp_path: Path) -> None:
     ensure_config(config_path)
 
     assert config_path.read_text(encoding="utf-8") == "[paths]\ndatabase = \"custom.sqlite3\"\n"
+
+
+@pytest.mark.parametrize("has_record_groups", [True, False])
+def test_newer_database_is_rejected_without_changing_its_version_or_data(tmp_path: Path, monkeypatch, has_record_groups) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = RecordTreeApp().init()
+    future_version = str(SCHEMA_VERSION + 1)
+    conn = connect(result.database_path)
+    try:
+        conn.execute("UPDATE schema_meta SET value = ? WHERE key = 'schema_version'", (future_version,))
+        conn.execute("INSERT INTO actors (name, name_normalized) VALUES ('Synthetic Actor', 'synthetic actor')")
+        if not has_record_groups:
+            conn.execute("DROP TABLE record_groups")
+        conn.commit()
+        for operation in (RecordTreeApp().init, RecordTreeApp().stats):
+            with pytest.raises(ConfigError, match="newer than supported"):
+                operation()
+        assert conn.execute("SELECT value FROM schema_meta WHERE key = 'schema_version'").fetchone()[0] == future_version
+        assert conn.execute("SELECT name FROM actors").fetchone()[0] == "Synthetic Actor"
+    finally:
+        conn.close()
 
 
 def test_load_config_uses_defaults_for_missing_sections(tmp_path: Path, monkeypatch) -> None:

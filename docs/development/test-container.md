@@ -52,6 +52,8 @@ http://127.0.0.1:5173
 
 The Vite dev server proxies `/api` requests to the backend inside the same container.
 
+Both published development ports bind to the host's loopback interface. Remote-access requirements follow [Docker deployment](../user-guide/docker.md#open-the-webui).
+
 ## Initialize Runtime Data
 
 ```bash

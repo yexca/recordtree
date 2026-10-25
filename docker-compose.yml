@@ -3,7 +3,7 @@ services:
     image: ${RECORDTREE_IMAGE:-yexca/recordtree:latest}
     container_name: recordtree-web
     ports:
-      - "7647:7647"
+      - "127.0.0.1:7647:7647"
     environment:
       TZ: Asia/Tokyo
     volumes:

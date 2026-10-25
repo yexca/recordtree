@@ -133,6 +133,28 @@ def test_login_uses_megacmd_non_interactive_arguments(monkeypatch) -> None:
     assert calls[0]["shell"] is False
 
 
+def test_streaming_output_is_batched_and_command_summary_is_bounded(monkeypatch, tmp_path: Path) -> None:
+    output = "x" * (64 * 1024) + "\r100%\n"
+    chunks: list[str] = []
+
+    class FakeProcess:
+        def __init__(self, *_args, **_kwargs):
+            self.stdout = io.StringIO(output)
+            self.stderr = io.StringIO("")
+
+        def wait(self):
+            return 0
+
+    monkeypatch.setattr(subprocess, "Popen", FakeProcess)
+    result = mega.download_link("mega-get", "https://example.invalid/file", tmp_path, chunks.append)
+
+    assert "".join(chunks) == output
+    assert len(chunks) < 20
+    assert max(map(len, chunks)) <= mega.STREAM_CHUNK_SIZE
+    assert len(result.stdout) <= mega.OUTPUT_LIMIT
+    assert result.stdout.endswith("...<truncated>")
+
+
 def test_logout_runs_mega_logout(monkeypatch) -> None:
     calls: list[list[str]] = []
 

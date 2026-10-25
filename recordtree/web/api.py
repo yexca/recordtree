@@ -164,9 +164,10 @@ def get_job(job_id: str) -> dict[str, object]:
 @app.get("/api/jobs/{job_id}/events")
 def job_events(job_id: str, after: int = 0) -> StreamingResponse:
     try:
-        payloads = job_manager.stream_events(job_id, after)
+        job_manager.get(job_id)
     except KeyError as error:
         raise NotFoundError(f"Job not found: {job_id}") from error
+    payloads = job_manager.stream_events(job_id, after)
     return StreamingResponse(payloads, media_type="text/event-stream")
 
 

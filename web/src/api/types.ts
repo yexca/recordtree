@@ -172,6 +172,7 @@ export interface Job {
   target: Record<string, unknown> | null;
   options: Record<string, unknown>;
   events: JobEvent[];
+  output_tail: string;
   result: ImportResult | DownloadExecutionResult | Record<string, unknown> | null;
   error: string | null;
 }
