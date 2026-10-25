@@ -50,7 +50,7 @@ echo.
 echo [RecordTree] Environment is ready.
 echo Python: %VENV_PYTHON%
 echo Run: "%RECORDTREE_EXE%" doctor
-echo Run: "%RECORDTREE_EXE%" import "%ROOT_DIR%\files\Record Tree 260605.xlsx"
+echo Run: "%RECORDTREE_EXE%" import
 exit /b 0
 
 :install_uv

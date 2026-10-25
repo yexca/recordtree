@@ -37,6 +37,41 @@
       "reason": "Official public npm registry URLs for the locked frontend package distributions."
     },
     {
+      "url": "https://github.com/sponsors/*",
+      "files": ["web/package-lock.json"],
+      "reason": "Public maintainer funding metadata included by npm for locked frontend dependencies."
+    },
+    {
+      "url": "https://github.com/vitejs/vite?sponsor=1",
+      "files": ["web/package-lock.json"],
+      "reason": "Vite funding metadata included in the generated frontend lockfile."
+    },
+    {
+      "url": "https://opencollective.com/parcel",
+      "files": ["web/package-lock.json"],
+      "reason": "Parcel funding metadata included by npm for locked frontend dependencies."
+    },
+    {
+      "url": "https://opencollective.com/postcss/",
+      "files": ["web/package-lock.json"],
+      "reason": "PostCSS funding metadata included in the generated frontend lockfile."
+    },
+    {
+      "url": "https://tidelift.com/funding/github/npm/postcss",
+      "files": ["web/package-lock.json"],
+      "reason": "PostCSS funding metadata included in the generated frontend lockfile."
+    },
+    {
+      "url": "http://www.w3.org/2000/svg",
+      "files": ["web/index.html"],
+      "reason": "Standard SVG namespace identifier in the embedded favicon."
+    },
+    {
+      "url": "https://github.com/yexca/recordtree/blob/v*/docs/**",
+      "files": ["docs/releases/*.md"],
+      "reason": "Versioned public documentation linked from the GitHub Release notes."
+    },
+    {
       "url": "https://astral.sh/uv/*/install.ps1",
       "files": ["run-install.bat"],
       "reason": "Official versioned uv installer that run-install.bat runs when uv is not on PATH."

@@ -38,6 +38,15 @@ jobs:
             exit 1
           fi
 
+      - name: Verify release notes
+        shell: bash
+        run: |
+          notes_file="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$notes_file" ]; then
+            echo "Release notes are missing or empty: $notes_file" >&2
+            exit 1
+          fi
+
       - name: Verify the tagged commit is on main
         shell: bash
         run: |
@@ -133,8 +142,13 @@ jobs:
     needs:
       - push_image
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       # Rerunning a release keeps the existing Release instead of failing.
-      - name: Create release with generated notes
+      - name: Create release from release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -142,4 +156,5 @@ jobs:
             echo "Release $GITHUB_REF_NAME already exists."
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "RecordTree $GITHUB_REF_NAME" --notes-file "docs/releases/${GITHUB_REF_NAME}.md"

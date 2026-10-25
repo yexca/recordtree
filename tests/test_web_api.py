@@ -985,7 +985,7 @@ def _workbook_bytes() -> bytes:
 
 def _test_client() -> httpx2.AsyncClient:
     transport = httpx2.ASGITransport(app=app)
-    return httpx2.AsyncClient(transport=transport, base_url="http://testserver")
+    return httpx2.AsyncClient(transport=transport, base_url="http://recordtree.test")
 
 
 async def _wait_for_job(client: httpx2.AsyncClient, job_id: str) -> dict[str, object]:

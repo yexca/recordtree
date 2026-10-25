@@ -14,6 +14,11 @@ This documentation is organized by audience and stability.
 - [Architecture](maintainer-guide/architecture.md)
 - [Data contract](maintainer-guide/data-contract.md)
 - [Testing guide](maintainer-guide/testing.md)
+- [Release guide](maintainer-guide/releases.md)
+
+## Release Notes
+
+- [RecordTree v0.1.0](releases/v0.1.0.md)
 
 ## Development
 
