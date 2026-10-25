@@ -68,6 +68,10 @@ Then initialize and check the environment:
 - `config/` holds the database, logs, and, in Docker WebUI runs, the MEGAcmd login session under `config/mega`. Treat it as sensitive.
 - `env/` holds only files that can be regenerated, such as the uv binary and the Python runtime that `run-install.bat` installs. Deleting it loses no data.
 
+## License
+
+RecordTree is licensed under the GNU Affero General Public License v3.0 only (`AGPL-3.0-only`). See [LICENSE](LICENSE) for the full text.
+
 ## Development
 
 Python dependencies are managed with uv. Install the locked development environment and run the tests:

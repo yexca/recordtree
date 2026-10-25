@@ -11,6 +11,7 @@ from .models import MegaCommandResult, MegaLoginStatus
 
 
 OUTPUT_LIMIT = 4000
+STREAM_CHUNK_SIZE = 4096
 COMMAND_TIMEOUT_SECONDS = 30
 MEGACMD_OUTPUT_ENCODING = "utf-8"
 
@@ -133,12 +134,17 @@ def _read_stream(
 ) -> None:
     if stream is None:
         return
+    captured = 0
     with stream:
         while True:
-            chunk = stream.read(1)
+            chunk = stream.readline(STREAM_CHUNK_SIZE)
             if chunk == "":
                 break
-            output_parts.append(chunk)
+            # Capture only enough for the command summary; the callback writes the full log.
+            remaining = OUTPUT_LIMIT + 1 - captured
+            if remaining > 0:
+                output_parts.append(chunk[:remaining])
+                captured += len(chunk[:remaining])
             output_callback(chunk)
 
 

@@ -41,10 +41,15 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
 
 
 def require_supported_schema(conn: sqlite3.Connection) -> None:
-    """Rejects a database whose schema predates the oldest supported version."""
+    """Rejects a database outside this release's supported schema range."""
+    version = _stored_schema_version(conn)
+    if version is not None and version > SCHEMA_VERSION:
+        raise ConfigError(
+            f"Database {_database_file(conn)} uses schema version {version}, "
+            f"which is newer than supported version {SCHEMA_VERSION}. Open it with a newer RecordTree release."
+        )
     if not _has_table(conn, "record_groups"):
         return
-    version = _stored_schema_version(conn)
     if version is not None and version >= OLDEST_SUPPORTED_SCHEMA_VERSION:
         return
     raise ConfigError(

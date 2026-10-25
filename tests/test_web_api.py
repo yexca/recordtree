@@ -16,7 +16,7 @@ from recordtree.importer.service import ImportService
 from recordtree.models import ImportRecord, ImportStats, LinkItem, MegaCommandResult, MegaLoginStatus
 from recordtree.repositories import ImportRepository, utc_now_sql
 from recordtree.web.api import app
-from recordtree.web.jobs import JobManager
+from recordtree.web.jobs import MAX_JOB_EVENTS, MAX_OUTPUT_TAIL_CHARS, JobManager
 from recordtree.web.serializers import to_json_safe
 
 pytestmark = pytest.mark.anyio
@@ -565,6 +565,11 @@ async def test_download_job_records_output_chunks(
             for event in job["events"]
             if event["type"] == "output"
         ] == ["downloading ", "100%\n"]
+        assert job["output_tail"] == "downloading 100%\n"
+        summaries = (await client.get("/api/jobs")).json()
+        summary = next(item for item in summaries if item["id"] == job["id"])
+        assert summary["events"] == []
+        assert summary["output_tail"] == job["output_tail"]
         detail = (await client.get(f"/api/downloads/{job['result']['download_id']}")).json()
         assert detail["log_path"]
         log = (await client.get(f"/api/downloads/{job['result']['download_id']}/log")).json()
@@ -573,6 +578,33 @@ async def test_download_job_records_output_chunks(
         events = await client.get(f"/api/jobs/{response.json()['job_id']}/events")
         assert "event: output" in events.text
         assert "100%" in events.text
+
+
+async def test_large_download_output_keeps_full_disk_log_and_bounded_live_history(tmp_path: Path, monkeypatch) -> None:
+    group_id = _setup_record(tmp_path, monkeypatch)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr("recordtree.mega.check_login", lambda _whoami: MegaLoginStatus(True, 0, "Synthetic account"))
+    output = "start\n" + "x" * (4096 * 300) + "\nfinished\n"
+
+    def fake_download(_mega_get, _url, _output_dir, output_callback=None):
+        output_callback(output)
+        return MegaCommandResult(0, "ok", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+    async with _test_client() as client:
+        response = await client.post("/api/downloads", json={"record_id_or_key": str(group_id), "types": "m4a"})
+        job = await _wait_for_job(client, response.json()["job_id"])
+        assert job["status"] == "completed"
+        assert len(job["events"]) <= MAX_JOB_EVENTS
+        assert job["output_tail"] == output[-MAX_OUTPUT_TAIL_CHARS:]
+        log = (await client.get(f"/api/downloads/{job['result']['download_id']}/log")).json()
+        assert log["text"] == output
+
+
+async def test_missing_job_event_stream_returns_not_found() -> None:
+    async with _test_client() as client:
+        response = await client.get("/api/jobs/missing-synthetic-job/events")
+        assert response.status_code == 404
 
 
 async def test_download_history_detail_items_and_job_list_endpoints(

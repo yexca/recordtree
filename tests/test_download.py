@@ -105,6 +105,64 @@ def _insert_download(conn, group_id: int, link_id: int, status: str) -> None:
     )
 
 
+def test_running_download_is_persisted_and_allows_concurrent_writes(tmp_path: Path, monkeypatch) -> None:
+    group_id = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr("recordtree.mega.check_login", lambda _whoami: MegaLoginStatus(True, 0, "Synthetic account"))
+    calls = []
+
+    def fake_download(_mega_get, url, _output_dir, output_callback=None):
+        calls.append(url)
+        reader = connect(tmp_path / "config" / "recordtree.sqlite3")
+        try:
+            reader.execute("PRAGMA busy_timeout = 100")
+            assert reader.execute("SELECT status FROM downloads").fetchone()[0] == "running"
+            statuses = [row[0] for row in reader.execute("SELECT status FROM download_items ORDER BY id")]
+            assert statuses == (["running", "planned"] if len(calls) == 1 else ["completed", "running"])
+            reader.execute("UPDATE actors SET name_normalized = name_normalized")
+            reader.commit()
+        finally:
+            reader.close()
+        return MegaCommandResult(0, "ok", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+    result = RecordTreeApp().download(str(group_id), assume_yes=True)
+    assert result.status == "completed"
+    assert result.completed == 2
+
+
+def test_interrupted_transfer_keeps_completed_items_for_resume(tmp_path: Path, monkeypatch) -> None:
+    group_id = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr("recordtree.mega.resolve_executable", lambda configured: configured)
+    monkeypatch.setattr("recordtree.mega.check_login", lambda _whoami: MegaLoginStatus(True, 0, "Synthetic account"))
+    calls = []
+
+    def fake_download(_mega_get, url, _output_dir, output_callback=None):
+        calls.append(url)
+        if len(calls) == 2:
+            raise KeyboardInterrupt
+        return MegaCommandResult(0, "ok", "")
+
+    monkeypatch.setattr("recordtree.mega.download_link", fake_download)
+    with pytest.raises(KeyboardInterrupt):
+        RecordTreeApp().download(str(group_id), assume_yes=True, only_undownloaded=True)
+
+    RecordTreeApp().init()
+    conn = connect(tmp_path / "config" / "recordtree.sqlite3")
+    try:
+        download_id, status = conn.execute("SELECT id, status FROM downloads").fetchone()
+        assert status == "interrupted"
+        assert [row[0] for row in conn.execute("SELECT status FROM download_items ORDER BY id")] == ["completed", "interrupted"]
+    finally:
+        conn.close()
+    assert RecordTreeApp().info(str(group_id)).downloaded == "partial"
+    request = RecordTreeApp().get_download_resume_request(download_id)
+    request["output"] = Path(request["output"])
+    result = RecordTreeApp().download(**request, assume_yes=True)
+    assert result.status == "completed"
+    assert calls == ["https://example.invalid/d/1", "https://example.invalid/d/2", "https://example.invalid/d/2"]
+
+
 def test_download_plan_filters_and_required_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     group_id = _setup(tmp_path, monkeypatch)
     app = RecordTreeApp()

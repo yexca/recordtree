@@ -2,6 +2,16 @@
   "version": 1,
   "endpoints": [
     {
+      "url": "http://fsf.org/",
+      "files": ["LICENSE"],
+      "reason": "Free Software Foundation URL in the unmodified AGPLv3 license text."
+    },
+    {
+      "url": "http://www.gnu.org/licenses/",
+      "files": ["LICENSE"],
+      "reason": "GNU license information URL in the unmodified AGPLv3 license text."
+    },
+    {
       "url": "https://mega.nz/linux/repo/Debian_12/amd64/megacmd-Debian_12_amd64.deb",
       "files": ["Dockerfile", "Dockerfile.dev"],
       "reason": "Official public MEGAcmd Debian package installed into the runtime and development images."

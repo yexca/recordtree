@@ -20,6 +20,10 @@ from .schemas import ActorDownloadRequest, DownloadRequest
 JobStatus = Literal["queued", "running", "completed", "failed"]
 JobKind = Literal["import", "download"]
 ACTIVE_STATUSES = {"queued", "running"}
+MAX_JOB_EVENTS = 256
+MAX_OUTPUT_TAIL_CHARS = 16 * 1024
+OUTPUT_EVENT_CHUNK_SIZE = 4096
+MAX_FINISHED_JOBS = 32
 
 
 def utc_now_iso() -> str:
@@ -43,6 +47,9 @@ class Job:
     started_at: str | None = None
     finished_at: str | None = None
     events: list[JobEvent] = field(default_factory=list)
+    event_index: int = 0
+    progress: dict[str, Any] | None = None
+    output_tail: str = ""
     target: dict[str, Any] | None = None
     options: dict[str, Any] = field(default_factory=dict)
     result: dict[str, Any] | None = None
@@ -119,7 +126,7 @@ class JobManager:
                 jobs = [job for job in jobs if job.status in ACTIVE_STATUSES]
             elif active is False:
                 jobs = [job for job in jobs if job.status not in ACTIVE_STATUSES]
-            return [_copy_job(job) for job in sorted(jobs, key=lambda item: item.created_at, reverse=True)]
+            return [_copy_job(job, include_events=False) for job in sorted(jobs, key=lambda item: item.created_at, reverse=True)]
 
     def list_events(self, job_id: str, after: int = 0) -> list[JobEvent]:
         with self._lock:
@@ -161,11 +168,6 @@ class JobManager:
                 return
 
     def serialize(self, job: Job) -> dict[str, Any]:
-        progress = None
-        for event in reversed(job.events):
-            if event.type == "progress":
-                progress = event.data
-                break
         return to_json_safe(
             {
                 "id": job.id,
@@ -174,10 +176,11 @@ class JobManager:
                 "created_at": job.created_at,
                 "started_at": job.started_at,
                 "finished_at": job.finished_at,
-                "progress": progress,
+                "progress": job.progress,
                 "target": job.target,
                 "options": job.options,
                 "events": job.events,
+                "output_tail": job.output_tail,
                 "result": job.result,
                 "error": job.error,
             }
@@ -255,7 +258,8 @@ class JobManager:
         )
 
     def _record_output(self, job_id: str, chunk: str) -> None:
-        self._add_event_by_id(job_id, "output", {"chunk": chunk})
+        for offset in range(0, len(chunk), OUTPUT_EVENT_CHUNK_SIZE):
+            self._add_event_by_id(job_id, "output", {"chunk": chunk[offset : offset + OUTPUT_EVENT_CHUNK_SIZE]})
 
     def _mark_running(self, job_id: str) -> None:
         with self._lock:
@@ -271,6 +275,7 @@ class JobManager:
             job.finished_at = utc_now_iso()
             job.result = result
             self._add_event(job, "completed", {"result": result})
+            self._prune_finished_jobs()
 
     def _finish_download(self, job_id: str, result: dict[str, Any], result_status: str) -> None:
         with self._lock:
@@ -287,6 +292,7 @@ class JobManager:
                 data = {"result": result}
             job.finished_at = utc_now_iso()
             self._add_event(job, event_type, data)
+            self._prune_finished_jobs()
 
     def _mark_failed(self, job_id: str, error: str) -> None:
         with self._lock:
@@ -295,6 +301,15 @@ class JobManager:
             job.finished_at = utc_now_iso()
             job.error = error
             self._add_event(job, "failed", {"error": error})
+            self._prune_finished_jobs()
+
+    def _prune_finished_jobs(self) -> None:
+        finished = sorted(
+            (job for job in self._jobs.values() if job.status not in ACTIVE_STATUSES),
+            key=lambda job: job.finished_at or job.created_at,
+        )
+        for job in finished[: max(0, len(finished) - MAX_FINISHED_JOBS)]:
+            del self._jobs[job.id]
 
     def _add_event_by_id(self, job_id: str, event_type: str, data: dict[str, Any]) -> None:
         with self._lock:
@@ -302,18 +317,24 @@ class JobManager:
 
     def _add_event(self, job: Job, event_type: str, data: dict[str, Any]) -> None:
         with self._condition:
+            job.event_index += 1
+            if event_type == "progress":
+                job.progress = to_json_safe(data)
+            elif event_type == "output":
+                job.output_tail = (job.output_tail + data["chunk"])[-MAX_OUTPUT_TAIL_CHARS:]
             job.events.append(
                 JobEvent(
-                    index=len(job.events) + 1,
+                    index=job.event_index,
                     type=event_type,
                     created_at=utc_now_iso(),
                     data=to_json_safe(data),
                 )
             )
+            del job.events[:-MAX_JOB_EVENTS]
             self._condition.notify_all()
 
 
-def _copy_job(job: Job) -> Job:
+def _copy_job(job: Job, *, include_events: bool = True) -> Job:
     return Job(
         id=job.id,
         kind=job.kind,
@@ -321,7 +342,10 @@ def _copy_job(job: Job) -> Job:
         created_at=job.created_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
-        events=list(job.events),
+        events=list(job.events) if include_events else [],
+        event_index=job.event_index,
+        progress=job.progress,
+        output_tail=job.output_tail,
         target=job.target,
         options=dict(job.options),
         result=job.result,

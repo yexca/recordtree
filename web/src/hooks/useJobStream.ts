@@ -5,17 +5,15 @@ import { errorMessage } from '../lib/format';
 
 const STREAM_EVENT_TYPES = ['queued', 'running', 'progress', 'output', 'completed', 'failed'];
 const POLL_INTERVAL_MS = 1500;
+const MAX_JOB_EVENTS = 256;
+const MAX_OUTPUT_TAIL_CHARS = 16 * 1024;
 
 export function isTerminal(status: JobStatus | string | undefined): boolean {
   return status === 'completed' || status === 'failed';
 }
 
 export function jobOutput(job: Job | null | undefined): string {
-  if (!job) return '';
-  return job.events
-    .filter((event) => event.type === 'output')
-    .map((event) => String(event.data.chunk ?? ''))
-    .join('');
+  return job?.output_tail ?? '';
 }
 
 export function mergeJobEvent<T extends Job>(job: T, event: JobEvent): T {
@@ -23,7 +21,10 @@ export function mergeJobEvent<T extends Job>(job: T, event: JobEvent): T {
   const data = event.data ?? {};
   return {
     ...job,
-    events: [...job.events, event].sort((a, b) => a.index - b.index),
+    events: [...job.events, event].sort((a, b) => a.index - b.index).slice(-MAX_JOB_EVENTS),
+    output_tail: event.type === 'output'
+      ? (job.output_tail + String(data.chunk ?? '')).slice(-MAX_OUTPUT_TAIL_CHARS)
+      : job.output_tail,
     progress: event.type === 'progress' ? (data as unknown as Job['progress']) : job.progress,
     status:
       event.type === 'completed'

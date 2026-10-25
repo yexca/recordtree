@@ -116,6 +116,7 @@ export function DownloadPlanner({
           target: null,
           options: {},
           events: [],
+          output_tail: '',
           result: null,
           error: null,
         });

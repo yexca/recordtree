@@ -48,6 +48,8 @@ To update, change the tag (or keep `latest`) and run `docker compose pull` and `
 http://127.0.0.1:7647
 ```
 
+The Compose file binds port 7647 to the host's loopback interface. The WebUI API has no built-in authentication and controls the local library, downloads, settings, and MEGAcmd account. Keep the direct port local. For remote access, use an authenticated HTTPS reverse proxy or an SSH tunnel; a proxy in another container can reach port 7647 over a private Docker network without publishing it on all host interfaces.
+
 ## Initialize Runtime Data
 
 ```bash
